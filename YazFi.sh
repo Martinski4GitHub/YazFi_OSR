@@ -1142,7 +1142,7 @@ Update_File()
 	then
 		tmpfile="/tmp/$1"
 		Download_File "$SCRIPT_REPO/$1" "$tmpfile"
-		if [ -s "$tmpfile" ] && ! diff -q "$tmpfile" "$SCRIPT_DIR/$1" >/dev/null 2>&1
+		if [ -s "$tmpfile" ] &&	grep -qF "$NETWORKMAP_MARKER" "$tmpfile" 2>/dev/null &&	! diff -q "$tmpfile" "$SCRIPT_DIR/$1" >/dev/null 2>&1
 		then
 			mv -f "$tmpfile" "$SCRIPT_DIR/$1"
 			chmod 0644 "$SCRIPT_DIR/$1"
@@ -1832,7 +1832,7 @@ NetworkMap_Ensure_Config()
 
 # Add enabled YazFi clients to the native ASUS Network Map client list.
 # This is an experimental WebUI-only integration (true/false).
-YAZFI_NETWORKMAP_CLIENTS=false
+YAZFI_NETWORKMAP_CLIENTS=true
 EOF_NETWORKMAP_CONFIG
 	fi
 }
