@@ -1875,7 +1875,10 @@ NetworkMap_JSON_Escape()
 NetworkMap_Generate_JSON()
 {
 	local TMPJSON FIRST IFACE IFACETAG IFADDR RADIO GUEST_INDEX ISWL
-	local MAC IP LEASE LEASE_IP NAME RSSI MAC_UPPER JMAC JIP JNAME JIFACE
+	local MAC IP LEASE LEASE_IP NAME RSSI
+	local STAINFO CURTX CURRX CONNECTED WLCONNECTTIME
+	local MAC_UPPER JMAC JIP JNAME JIFACE
+	local JCURTX JCURRX JWLCONNECTTIME
 
 	mkdir -p "$SCRIPT_WEB_DIR" || return 1
 	TMPJSON="${NETWORKMAP_JSON}.$$"
@@ -1924,18 +1927,68 @@ NetworkMap_Generate_JSON()
 				NAME="$(printf '%s' "$NAME" | sed 's/[^A-Za-z0-9._ -]/_/g')"
 
 				RSSI="$(wl -i "$IFACE" rssi "$MAC" 2>/dev/null | awk 'NR == 1 { print $1 }')"
-				case "$RSSI" in -[0-9]*|[0-9]*) ;; *) RSSI="-99" ;; esac
+				case "$RSSI" in
+					-[0-9]*|[0-9]*) ;;
+					*) RSSI="-99" ;;
+				esac
+
+				STAINFO="$(wl -i "$IFACE" sta_info "$MAC" 2>/dev/null)"
+
+				CURTX="$(printf '%s\n' "$STAINFO" | awk '
+					/rate of last tx pkt/ {
+						printf "%.1f", $6 / 1000
+						exit
+					}
+				')"
+
+				CURRX="$(printf '%s\n' "$STAINFO" | awk '
+					/rate of last rx pkt/ {
+						printf "%.1f", $6 / 1000
+						exit
+					}
+				')"
+
+				CONNECTED="$(printf '%s\n' "$STAINFO" | awk '
+					/in network/ {
+						print $3
+						exit
+					}
+				')"
+
+				case "$CONNECTED" in
+					''|*[!0-9]*)
+						WLCONNECTTIME="00:00:00"
+					;;
+					*)
+						WLCONNECTTIME="$(printf '%02d:%02d:%02d' \
+							$((CONNECTED / 3600)) \
+							$(((CONNECTED % 3600) / 60)) \
+							$((CONNECTED % 60)))"
+					;;
+				esac
 
 				MAC_UPPER="$(printf '%s' "$MAC" | tr '[:lower:]' '[:upper:]')"
 				JMAC="$(NetworkMap_JSON_Escape "$MAC_UPPER")"
 				JIP="$(NetworkMap_JSON_Escape "$IP")"
 				JNAME="$(NetworkMap_JSON_Escape "$NAME")"
 				JIFACE="$(NetworkMap_JSON_Escape "$IFACE")"
+				JCURTX="$(NetworkMap_JSON_Escape "$CURTX")"
+				JCURRX="$(NetworkMap_JSON_Escape "$CURRX")"
+				JWLCONNECTTIME="$(NetworkMap_JSON_Escape "$WLCONNECTTIME")"
 
 				[ "$FIRST" -eq 1 ] || printf ',' >> "$TMPJSON"
 				FIRST=0
-				printf '{"mac":"%s","ip":"%s","name":"%s","isWL":"%s","isGN":"%s","rssi":"%s","iface":"%s"}' \
-					"$JMAC" "$JIP" "$JNAME" "$ISWL" "$GUEST_INDEX" "$RSSI" "$JIFACE" >> "$TMPJSON"
+				printf '{"mac":"%s","ip":"%s","name":"%s","isWL":"%s","isGN":"%s","rssi":"%s","iface":"%s","curTx":"%s","curRx":"%s","wlConnectTime":"%s"}' \
+					"$JMAC" \
+					"$JIP" \
+					"$JNAME" \
+					"$ISWL" \
+					"$GUEST_INDEX" \
+					"$RSSI" \
+					"$JIFACE" \
+					"$JCURTX" \
+					"$JCURRX" \
+					"$JWLCONNECTTIME" >> "$TMPJSON"
 			done
 		done
 	fi
@@ -4681,7 +4734,7 @@ case "$1" in
 		exit 0
 	;;
 	develop)
-		SCRIPT_BRANCH="Network-Map"
+		SCRIPT_BRANCH="develop"
 		SCRIPT_REPO="https://raw.githubusercontent.com/AMTM-OSR/$SCRIPT_NAME/$SCRIPT_BRANCH"
 		Update_Version force
 		exit 0

@@ -89,7 +89,7 @@ function yazfiFallbackSourceClient() {
         internetState: "1",
         curTx: "",
         curRx: "",
-        wlConnectTime: "",
+        wlConnectTime: "00:00:00",
         ROG: "0"
     };
 }
@@ -186,9 +186,19 @@ function yazfiMergeIntoOriginData() {
             obj.internetMode = "allow";
             obj.internetState = "1";
             obj.ROG = "0";
-            obj.curTx = "";
-            obj.curRx = "";
-            obj.wlConnectTime = "";
+
+            obj.curTx = (guest.curTx !== undefined && guest.curTx !== null)
+                ? String(guest.curTx)
+                : "";
+
+            obj.curRx = (guest.curRx !== undefined && guest.curRx !== null)
+                ? String(guest.curRx)
+                : "";
+
+            obj.wlConnectTime = guest.wlConnectTime
+                ? String(guest.wlConnectTime)
+                : "00:00:00";
+
             obj.amesh_isRe = "0";
             obj.amesh_isReClient = "0";
             obj.amesh_papMac = "";
