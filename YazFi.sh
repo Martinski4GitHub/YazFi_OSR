@@ -2073,6 +2073,9 @@ NetworkMap_WebUI()
 			cat "$NETWORKMAP_SOURCE_JS" >> "$NETWORKMAP_PATCH_JS" || return 1
 			chmod 0644 "$NETWORKMAP_PATCH_JS"
 			mount -o bind "$NETWORKMAP_PATCH_JS" "$NETWORKMAP_TARGET_JS" || return 1
+			# Restart the daemon so it loads the current YazFi.sh functions.
+			NetworkMap_Daemon stop
+			sleep 1
 			NetworkMap_Generate_JSON
 			NetworkMap_Daemon start
 			logger -t "$SCRIPT_NAME" "Native Network Map integration active"
