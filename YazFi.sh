@@ -1138,18 +1138,36 @@ Update_File()
 				Print_Output true "New version of $1 downloaded" "$PASS"
 			fi
 		fi
-	elif [ "$1" = "YazFi_networkmap.js" ]
-	then
-		tmpfile="/tmp/$1"
-		Download_File "$SCRIPT_REPO/$1" "$tmpfile"
-		if [ -s "$tmpfile" ] &&	grep -qF "$NETWORKMAP_MARKER" "$tmpfile" 2>/dev/null &&	! diff -q "$tmpfile" "$SCRIPT_DIR/$1" >/dev/null 2>&1
+		elif [ "$1" = "YazFi_networkmap.js" ]
 		then
-			mv -f "$tmpfile" "$SCRIPT_DIR/$1"
-			chmod 0644 "$SCRIPT_DIR/$1"
-			NetworkMap_WebUI remount 2>/dev/null
-		else
-			rm -f "$tmpfile"
-		fi
+			tmpfile="/tmp/$1"
+
+			if [ -f "$SCRIPT_DIR/$1" ]
+			then
+				Download_File "$SCRIPT_REPO/$1" "$tmpfile"
+
+				if [ -s "$tmpfile" ] && grep -qF "$NETWORKMAP_MARKER" "$tmpfile" 2>/dev/null && ! diff -q "$tmpfile" "$SCRIPT_DIR/$1" >/dev/null 2>&1
+				then
+					mv -f "$tmpfile" "$SCRIPT_DIR/$1"
+					chmod 0644 "$SCRIPT_DIR/$1"
+					Print_Output true "New version of $1 downloaded" "$PASS"
+					NetworkMap_WebUI remount 2>/dev/null
+				fi
+
+				rm -f "$tmpfile"
+			else
+				Download_File "$SCRIPT_REPO/$1" "$tmpfile"
+
+				if [ -s "$tmpfile" ] && grep -qF "$NETWORKMAP_MARKER" "$tmpfile" 2>/dev/null
+				then
+					mv -f "$tmpfile" "$SCRIPT_DIR/$1"
+					chmod 0644 "$SCRIPT_DIR/$1"
+					Print_Output true "$1 downloaded" "$PASS"
+					NetworkMap_WebUI remount 2>/dev/null
+				fi
+
+				rm -f "$tmpfile"
+			fi
 	elif [ "$1" = "README.md" ] || [ "$1" = "LICENSE" ]
 	then
 		tmpfile="/tmp/$1"
