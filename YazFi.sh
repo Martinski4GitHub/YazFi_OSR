@@ -4734,7 +4734,7 @@ case "$1" in
 		exit 0
 	;;
 	develop)
-		SCRIPT_BRANCH="develop"
+		SCRIPT_BRANCH="Network-Map"
 		SCRIPT_REPO="https://raw.githubusercontent.com/AMTM-OSR/$SCRIPT_NAME/$SCRIPT_BRANCH"
 		Update_Version force
 		exit 0
