@@ -17,7 +17,7 @@
 ##       Guest Network DHCP script and for       ##
 ##            AsusWRT-Merlin firmware            ##
 ###################################################
-# Last Modified: 2026-Apr-15
+# Last Modified: 2026-Jul-02
 #--------------------------------------------------
 
 ######       Shellcheck directives     ######
@@ -43,7 +43,7 @@ readonly SCRIPT_NAME="YazFi"
 readonly SCRIPT_CONF="/jffs/addons/$SCRIPT_NAME.d/config"
 readonly YAZFI_VERSION="v4.4.12"
 readonly SCRIPT_VERSION="v4.4.12"
-readonly SCRIPT_VERSTAG="26041523"
+readonly SCRIPT_VERSTAG="26070210"
 SCRIPT_BRANCH="develop"
 SCRIPT_REPO="https://raw.githubusercontent.com/AMTM-OSR/$SCRIPT_NAME/$SCRIPT_BRANCH"
 readonly SCRIPT_DIR="/jffs/addons/$SCRIPT_NAME.d"
@@ -54,6 +54,16 @@ readonly SHARED_DIR="/jffs/addons/shared-jy"
 readonly SHARED_REPO="https://raw.githubusercontent.com/AMTM-OSR/shared-jy/master"
 readonly SHARED_WEB_DIR="$SCRIPT_WEBPAGE_DIR/shared-jy"
 readonly TEMP_MENU_TREE="/tmp/menuTree.js"
+
+# Optional integration with the native ASUS Network Map client list.
+readonly NETWORKMAP_TARGET_JS="/www/client_function.js"
+readonly NETWORKMAP_SOURCE_JS="$SCRIPT_DIR/YazFi_networkmap.js"
+readonly NETWORKMAP_JSON="$SCRIPT_WEB_DIR/networkmap_clients.json"
+readonly NETWORKMAP_PIDFILE="/tmp/YazFi-networkmap.pid"
+readonly NETWORKMAP_PATCH_JS="/tmp/YazFi-client_function.js"
+readonly NETWORKMAP_BASE_JS="/tmp/YazFi-client_function.base.js"
+readonly NETWORKMAP_MARKER="YAZFI_NETWORKMAP_INJECT_V1"
+readonly NETWORKMAP_REFRESH_SECS=10
 ### End of script variables ###
 
 ### Start of output format variables ###
@@ -644,6 +654,28 @@ Auto_ServiceEventEnd()
 	esac
 }
 
+##---------------------------------------##
+## Added by ExtremeFiretop [2026-Jul-02] ##
+##---------------------------------------##
+Auto_NetworkMapServiceEventEnd()
+{
+	local HOOKFILE="/jffs/scripts/service-event-end"
+	case $1 in
+		create)
+			if [ ! -f "$HOOKFILE" ]; then
+				printf '#!/bin/sh\n\n' > "$HOOKFILE"
+			fi
+			if ! grep -qF "# $SCRIPT_NAME Network Map" "$HOOKFILE"; then
+				echo 'if { [ "$1" = "start" ] || [ "$1" = "restart" ]; } && [ "$2" = "httpd" ]; then /jffs/scripts/'"$SCRIPT_NAME"' networkmap remount >/dev/null 2>&1 & fi # '"$SCRIPT_NAME"' Network Map' >> "$HOOKFILE"
+			fi
+			chmod 0755 "$HOOKFILE"
+		;;
+		delete)
+			[ -f "$HOOKFILE" ] && sed -i '/# '"$SCRIPT_NAME"' Network Map/d' "$HOOKFILE"
+		;;
+	esac
+}
+
 ##----------------------------------------##
 ## Modified by Martinski W. [2026-Apr-15] ##
 ##----------------------------------------##
@@ -937,9 +969,9 @@ Update_Check()
 	echo "$doupdate,$localver,$serverver"
 }
 
-##----------------------------------------##
-## Modified by Martinski W. [2022-Dec-26] ##
-##----------------------------------------##
+##------------------------------------------##
+## Modified by ExtremeFiretop [2026-Jul-02] ##
+##------------------------------------------##
 Update_Version()
 {
 	if [ $# -eq 0 ] || [ -z "$1" ]
@@ -967,6 +999,7 @@ Update_Version()
 					then
 						Update_File shared-jy.tar.gz
 						Update_File YazFi_www.asp
+						Update_File YazFi_networkmap.js
 					else
 						Print_Output true "WebUI is only supported on firmware versions with addon support" "$WARN"
 					fi
@@ -1010,6 +1043,7 @@ Update_Version()
 		then
 			Update_File shared-jy.tar.gz
 			Update_File YazFi_www.asp
+			Update_File YazFi_networkmap.js
 		else
 			Print_Output true "WebUI is only supported on firmware versions with addon support" "$WARN"
 		fi
@@ -1057,9 +1091,9 @@ ScriptUpdateFromAMTM()
     return "$?"
 }
 
-##----------------------------------------##
-## Modified by Martinski W. [2025-Mar-16] ##
-##----------------------------------------##
+##------------------------------------------##
+## Modified by ExtremeFiretop [2026-Jul-02] ##
+##------------------------------------------##
 Update_File()
 {
 	if [ "$1" = "YazFi_www.asp" ]
@@ -1103,6 +1137,18 @@ Update_File()
 				rm -f "$SHARED_DIR/$1"
 				Print_Output true "New version of $1 downloaded" "$PASS"
 			fi
+		fi
+	elif [ "$1" = "YazFi_networkmap.js" ]
+	then
+		tmpfile="/tmp/$1"
+		Download_File "$SCRIPT_REPO/$1" "$tmpfile"
+		if [ -s "$tmpfile" ] && ! diff -q "$tmpfile" "$SCRIPT_DIR/$1" >/dev/null 2>&1
+		then
+			mv -f "$tmpfile" "$SCRIPT_DIR/$1"
+			chmod 0644 "$SCRIPT_DIR/$1"
+			NetworkMap_WebUI remount 2>/dev/null
+		else
+			rm -f "$tmpfile"
 		fi
 	elif [ "$1" = "README.md" ] || [ "$1" = "LICENSE" ]
 	then
@@ -1401,6 +1447,8 @@ Conf_FixBlanks()
 		Clear_Lock
 		return 1
 	fi
+
+	NetworkMap_Ensure_Config
 
 	##-------------------------------------##
 	## Added by Martinski W. [2022-Dec-07] ##
@@ -1771,6 +1819,239 @@ Create_Symlinks()
 	if [ ! -d "$SHARED_WEB_DIR" ]; then
 		ln -s "$SHARED_DIR" "$SHARED_WEB_DIR" 2>/dev/null
 	fi
+}
+
+##---------------------------------------##
+## Added by ExtremeFiretop [2026-Jul-02] ##
+##---------------------------------------##
+NetworkMap_Ensure_Config()
+{
+	[ -f "$SCRIPT_CONF" ] || return 0
+	if ! grep -q '^YAZFI_NETWORKMAP_CLIENTS=' "$SCRIPT_CONF"; then
+		cat >> "$SCRIPT_CONF" <<'EOF_NETWORKMAP_CONFIG'
+
+# Add enabled YazFi clients to the native ASUS Network Map client list.
+# This is an experimental WebUI-only integration (true/false).
+YAZFI_NETWORKMAP_CLIENTS=false
+EOF_NETWORKMAP_CONFIG
+	fi
+}
+
+NetworkMap_Config_Enabled()
+{
+	Firmware_Version_WebUI || return 1
+	NetworkMap_Ensure_Config
+	local YAZFI_NETWORKMAP_CLIENTS="false"
+	[ -f "$SCRIPT_CONF" ] && . "$SCRIPT_CONF"
+	case "$YAZFI_NETWORKMAP_CLIENTS" in
+		true|TRUE) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+NetworkMap_JSON_Escape()
+{
+	printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
+
+NetworkMap_Generate_JSON()
+{
+	local TMPJSON FIRST IFACE IFACETAG IFADDR RADIO GUEST_INDEX ISWL
+	local MAC IP LEASE LEASE_IP NAME RSSI MAC_UPPER JMAC JIP JNAME JIFACE
+
+	mkdir -p "$SCRIPT_WEB_DIR" || return 1
+	TMPJSON="${NETWORKMAP_JSON}.$$"
+	printf '[' > "$TMPJSON" || return 1
+	FIRST=1
+
+	if [ -f "$SCRIPT_CONF" ]; then
+		. "$SCRIPT_CONF"
+		for IFACE in $IFACELIST_ORIG; do
+			IFACETAG="$(Get_Iface_Var "$IFACE")"
+			[ "$(eval echo '$'"${IFACETAG}_ENABLED")" = "true" ] || continue
+
+			IFADDR="$(ip -4 addr show dev "$IFACE" 2>/dev/null | awk '/inet / { print $2; exit }')"
+			[ -n "$IFADDR" ] || continue
+
+			RADIO="${IFACE%%.*}"
+			RADIO="${RADIO#wl}"
+			GUEST_INDEX="${IFACE#*.}"
+			case "$RADIO" in ''|*[!0-9]*) continue ;; esac
+			case "$GUEST_INDEX" in ''|*[!0-9]*) GUEST_INDEX=1 ;; esac
+			ISWL=$((RADIO + 1))
+
+			for MAC in $(wl -i "$IFACE" assoclist 2>/dev/null | awk '{ print $2 }'); do
+				case "$MAC" in ??\:??\:??\:??\:??\:??) ;; *) continue ;; esac
+
+				IP="$(awk -v m="$MAC" -v d="$IFACE" '
+					tolower($4) == tolower(m) && $6 == d && $3 == "0x2" { print $1; exit }
+				' /proc/net/arp 2>/dev/null)"
+
+				LEASE="$(awk -v m="$MAC" '
+					tolower($2) == tolower(m) { line=$0 }
+					END { print line }
+				' /var/lib/misc/dnsmasq.leases 2>/dev/null)"
+				LEASE_IP="$(printf '%s\n' "$LEASE" | awk '{ print $3 }')"
+				NAME="$(printf '%s\n' "$LEASE" | awk '{ print $4 }')"
+				[ -n "$IP" ] || IP="$LEASE_IP"
+
+				if [ -z "$IP" ]; then
+					IP="$(ip neigh show dev "$IFACE" 2>/dev/null | awk -v m="$MAC" '
+						tolower($5) == tolower(m) { print $1; exit }
+					')"
+				fi
+				[ -n "$IP" ] || continue
+
+				if [ -z "$NAME" ] || [ "$NAME" = "*" ]; then NAME="$MAC"; fi
+				NAME="$(printf '%s' "$NAME" | sed 's/[^A-Za-z0-9._ -]/_/g')"
+
+				RSSI="$(wl -i "$IFACE" rssi "$MAC" 2>/dev/null | awk 'NR == 1 { print $1 }')"
+				case "$RSSI" in -[0-9]*|[0-9]*) ;; *) RSSI="-99" ;; esac
+
+				MAC_UPPER="$(printf '%s' "$MAC" | tr '[:lower:]' '[:upper:]')"
+				JMAC="$(NetworkMap_JSON_Escape "$MAC_UPPER")"
+				JIP="$(NetworkMap_JSON_Escape "$IP")"
+				JNAME="$(NetworkMap_JSON_Escape "$NAME")"
+				JIFACE="$(NetworkMap_JSON_Escape "$IFACE")"
+
+				[ "$FIRST" -eq 1 ] || printf ',' >> "$TMPJSON"
+				FIRST=0
+				printf '{"mac":"%s","ip":"%s","name":"%s","isWL":"%s","isGN":"%s","rssi":"%s","iface":"%s"}' \
+					"$JMAC" "$JIP" "$JNAME" "$ISWL" "$GUEST_INDEX" "$RSSI" "$JIFACE" >> "$TMPJSON"
+			done
+		done
+	fi
+
+	printf ']\n' >> "$TMPJSON"
+	chmod 0644 "$TMPJSON"
+	mv -f "$TMPJSON" "$NETWORKMAP_JSON"
+}
+
+NetworkMap_Daemon_Running()
+{
+	[ -s "$NETWORKMAP_PIDFILE" ] || return 1
+	local PID="$(cat "$NETWORKMAP_PIDFILE" 2>/dev/null)"
+	[ -n "$PID" ] && kill -0 "$PID" 2>/dev/null
+}
+
+NetworkMap_Daemon()
+{
+	case "$1" in
+		start)
+			NetworkMap_Config_Enabled || { NetworkMap_Daemon stop; return 0; }
+			NetworkMap_Daemon_Running && return 0
+			rm -f "$NETWORKMAP_PIDFILE"
+			/jffs/scripts/$SCRIPT_NAME networkmap daemon >/dev/null 2>&1 &
+			echo $! > "$NETWORKMAP_PIDFILE"
+		;;
+		stop)
+			if NetworkMap_Daemon_Running; then
+				kill "$(cat "$NETWORKMAP_PIDFILE")" 2>/dev/null
+			fi
+			rm -f "$NETWORKMAP_PIDFILE"
+		;;
+		run)
+			echo $$ > "$NETWORKMAP_PIDFILE"
+			trap '[ "$(cat "$NETWORKMAP_PIDFILE" 2>/dev/null)" = "$$" ] && rm -f "$NETWORKMAP_PIDFILE"' EXIT
+			trap 'exit 0' INT TERM
+			while NetworkMap_Config_Enabled; do
+				NetworkMap_Generate_JSON
+				sleep "$NETWORKMAP_REFRESH_SECS"
+			done
+			printf '[]\n' > "$NETWORKMAP_JSON"
+		;;
+	esac
+}
+
+NetworkMap_WebUI()
+{
+	case "$1" in
+		start|remount|"")
+			if ! NetworkMap_Config_Enabled; then
+				NetworkMap_WebUI stop
+				return 0
+			fi
+			[ -s "$NETWORKMAP_SOURCE_JS" ] || { logger -t "$SCRIPT_NAME" "Network Map JS source missing"; return 1; }
+			[ -f "$NETWORKMAP_TARGET_JS" ] || { logger -t "$SCRIPT_NAME" "Network Map target missing"; return 1; }
+
+			if grep -q "$NETWORKMAP_MARKER" "$NETWORKMAP_TARGET_JS" 2>/dev/null; then
+				umount "$NETWORKMAP_TARGET_JS" 2>/dev/null
+			fi
+			cp "$NETWORKMAP_TARGET_JS" "$NETWORKMAP_BASE_JS" || return 1
+			if grep -q "$NETWORKMAP_MARKER" "$NETWORKMAP_BASE_JS" 2>/dev/null; then
+				logger -t "$SCRIPT_NAME" "Network Map patch marker remained after unmount"
+				return 1
+			fi
+
+			awk '
+				BEGIN { patched=0 }
+				{
+					print
+					if (!patched && $0 ~ /^[[:space:]]*function[[:space:]]+genClientList[[:space:]]*\(\)[[:space:]]*\{/) {
+						print "yazfiMergeIntoOriginData();"
+						patched=1
+					}
+				}
+				END { if (!patched) exit 42 }
+			' "$NETWORKMAP_BASE_JS" > "$NETWORKMAP_PATCH_JS" || {
+				logger -t "$SCRIPT_NAME" "Unable to locate genClientList() in client_function.js"
+				rm -f "$NETWORKMAP_PATCH_JS"
+				return 1
+			}
+
+			cat "$NETWORKMAP_SOURCE_JS" >> "$NETWORKMAP_PATCH_JS" || return 1
+			chmod 0644 "$NETWORKMAP_PATCH_JS"
+			mount -o bind "$NETWORKMAP_PATCH_JS" "$NETWORKMAP_TARGET_JS" || return 1
+			NetworkMap_Generate_JSON
+			NetworkMap_Daemon start
+			logger -t "$SCRIPT_NAME" "Native Network Map integration active"
+		;;
+		stop)
+			NetworkMap_Daemon stop
+			if grep -q "$NETWORKMAP_MARKER" "$NETWORKMAP_TARGET_JS" 2>/dev/null; then
+				umount "$NETWORKMAP_TARGET_JS" 2>/dev/null
+			fi
+			rm -f "$NETWORKMAP_JSON" "$NETWORKMAP_PATCH_JS" "$NETWORKMAP_BASE_JS"
+		;;
+	esac
+}
+
+NetworkMap_Apply()
+{
+	if NetworkMap_Config_Enabled; then
+		NetworkMap_WebUI start || Print_Output true "Unable to enable native Network Map integration" "$WARN"
+	else
+		NetworkMap_WebUI stop
+	fi
+}
+
+NetworkMap_Set_Enabled()
+{
+	NetworkMap_Ensure_Config
+	case "$1" in
+		true|false) ;;
+		*) return 1 ;;
+	esac
+
+	if grep -q '^YAZFI_NETWORKMAP_CLIENTS=' "$SCRIPT_CONF" 2>/dev/null; then
+		sed -i "s/^YAZFI_NETWORKMAP_CLIENTS=.*/YAZFI_NETWORKMAP_CLIENTS=$1/" "$SCRIPT_CONF"
+	else
+		printf '\nYAZFI_NETWORKMAP_CLIENTS=%s\n' "$1" >> "$SCRIPT_CONF"
+	fi
+}
+
+NetworkMap_Status()
+{
+	if NetworkMap_Config_Enabled; then NM_ENABLED=true; else NM_ENABLED=false; fi
+	if grep -qF "$NETWORKMAP_MARKER" "$NETWORKMAP_TARGET_JS" 2>/dev/null; then NM_MOUNTED=true; else NM_MOUNTED=false; fi
+	if NetworkMap_Daemon_Running; then NM_DAEMON=true; else NM_DAEMON=false; fi
+
+	echo "enabled=$NM_ENABLED"
+	echo "js_source=$([ -s "$NETWORKMAP_SOURCE_JS" ] && echo present || echo missing)"
+	echo "mounted=$NM_MOUNTED"
+	echo "daemon=$NM_DAEMON"
+	echo "json=$NETWORKMAP_JSON"
+	[ -f "$NETWORKMAP_JSON" ] && cat "$NETWORKMAP_JSON"
 }
 
 ##----------------------------------------##
@@ -2807,9 +3088,9 @@ _NVRAM_Get_WAN_IFace_()
     return 0
 }
 
-##----------------------------------------##
-## Modified by Martinski W. [2025-Jun-17] ##
-##----------------------------------------##
+##------------------------------------------##
+## Modified by ExtremeFiretop [2026-Jul-02] ##
+##------------------------------------------##
 Config_Networks()
 {
 	Print_Output true "$SCRIPT_NAME $SCRIPT_VERSION starting up" "$PASS"
@@ -2823,6 +3104,7 @@ Config_Networks()
 	Auto_Cron create 2>/dev/null
 	Auto_DNSMASQ create 2>/dev/null
 	Auto_ServiceEvent create 2>/dev/null
+	Auto_NetworkMapServiceEventEnd create 2>/dev/null
 	Auto_ServiceStart create 2>/dev/null
 	Auto_OpenVPNEvent create 2>/dev/null
 
@@ -3003,6 +3285,8 @@ Config_Networks()
 		Execute_UserScripts
 		Iface_BounceClients
 	fi
+
+	NetworkMap_Apply
 
 	Print_Output true "$SCRIPT_NAME $SCRIPT_VERSION completed successfully" "$PASS"
 	Clear_Lock
@@ -3317,9 +3601,9 @@ Check_Requirements()
 	fi
 }
 
-##-------------------------------------##
-## Added by Martinski W. [2025-Jun-18] ##
-##-------------------------------------##
+##------------------------------------------##
+## Modified by ExtremeFiretop [2026-Jul-02] ##
+##------------------------------------------##
 Menu_Install()
 {
 	ScriptHeader
@@ -3349,6 +3633,7 @@ Menu_Install()
 	then
 		Update_File shared-jy.tar.gz
 		Update_File YazFi_www.asp
+		Update_File YazFi_networkmap.js
 	else
 		Print_Output false "WebUI is supported only on firmware versions with add-on support" "$WARN"
 	fi
@@ -3370,8 +3655,10 @@ Menu_Install()
 	Auto_Cron create 2>/dev/null
 	Auto_DNSMASQ create 2>/dev/null
 	Auto_ServiceEvent create 2>/dev/null
+	Auto_NetworkMapServiceEventEnd create 2>/dev/null
 	Auto_ServiceStart create 2>/dev/null
 	Auto_OpenVPNEvent create 2>/dev/null
+	NetworkMap_Apply
 
 	Print_Output false "You can access $SCRIPT_NAME's configuration via the Guest Networks section of the WebUI" "$PASS"
 	Print_Output false "Alternatively, use $SCRIPT_NAME's menu via amtm (if installed), with /jffs/scripts/$SCRIPT_NAME or simply $SCRIPT_NAME"
@@ -3403,8 +3690,10 @@ Menu_Startup()
 	Create_Dirs
 	Create_Symlinks
 	Auto_Cron create 2>/dev/null
+	Auto_NetworkMapServiceEventEnd create 2>/dev/null
 	Set_Version_Custom_Settings local "$SCRIPT_VERSION"
 	Mount_WebUI
+	NetworkMap_Apply
 }
 
 ##----------------------------------------##
@@ -3967,6 +4256,8 @@ Menu_Uninstall()
 	IFACE_WAN="$(_NVRAM_Get_WAN_IFace_)"
 
 	Print_Output true "Removing $SCRIPT_NAME..." "$PASS"
+	NetworkMap_WebUI stop 2>/dev/null
+	Auto_NetworkMapServiceEventEnd delete 2>/dev/null
 	Auto_Startup delete 2>/dev/null
 	Auto_Cron delete 2>/dev/null
 	Auto_DNSMASQ delete 2>/dev/null
@@ -4055,9 +4346,9 @@ EOF
 }
 
 ### function based on @dave14305's FlexQoS show_help function ###
-##----------------------------------------##
-## Modified by Martinski W. [2025-Jun-17] ##
-##----------------------------------------##
+##------------------------------------------##
+## Modified by ExtremeFiretop [2026-Jul-02] ##
+##------------------------------------------##
 Show_Help()
 {
 	printf "HELP ${MGNTct}${SCRIPT_VERS_INFO}${CLRct}\n"
@@ -4073,6 +4364,7 @@ Available commands:
   $SCRIPT_NAME check            check if $SCRIPT_NAME configuration is still in effect and re-apply if not
   $SCRIPT_NAME bounceclients    restart guest network radios
   $SCRIPT_NAME status           print information about clients connected to $SCRIPT_NAME guest networks
+  $SCRIPT_NAME networkmap start enable/remount native Network Map integration
   $SCRIPT_NAME check            check if $SCRIPT_NAME configuration is still in effect and re-apply if not
   $SCRIPT_NAME userscripts      run userscripts (if any have been created)
   $SCRIPT_NAME rejectlogging    toggle whether rejected packets are logged to syslog
@@ -4093,9 +4385,9 @@ then SCRIPT_VERS_INFO=""
 else SCRIPT_VERS_INFO="[$versionDev_TAG]"
 fi
 
-##----------------------------------------##
-## Modified by Martinski W. [2025-Jul-15] ##
-##----------------------------------------##
+##------------------------------------------##
+## Modified by ExtremeFiretop [2026-Jul-02] ##
+##------------------------------------------##
 if [ $# -eq 0 ] || [ -z "$1" ]
 then
 	if ! _Firmware_Support_Check_
@@ -4117,11 +4409,13 @@ then
 	Auto_Cron create 2>/dev/null
 	Auto_DNSMASQ create 2>/dev/null
 	Auto_ServiceEvent create 2>/dev/null
+	Auto_NetworkMapServiceEventEnd create 2>/dev/null
 	Auto_ServiceStart create 2>/dev/null
 	Auto_OpenVPNEvent create 2>/dev/null
 	Set_Version_Custom_Settings local "$SCRIPT_VERSION"
 	Shortcut_Script create
 	_CheckFor_WebGUI_Page_
+	NetworkMap_Apply
 	ScriptHeader
 	MainMenu
 	exit 0
@@ -4283,6 +4577,22 @@ case "$1" in
 			done
 		fi
 	;;
+	networkmap)
+		case "$2" in
+			start|remount|stop) NetworkMap_WebUI "$2" ;;
+			daemon) NetworkMap_Daemon run ;;
+			refresh) NetworkMap_Generate_JSON ;;
+			enable)
+				NetworkMap_Set_Enabled true && NetworkMap_WebUI start
+			;;
+			disable)
+				NetworkMap_Set_Enabled false && NetworkMap_WebUI stop
+			;;
+			status) NetworkMap_Status ;;
+			*) echo "Usage: $SCRIPT_NAME networkmap {enable|disable|start|remount|stop|refresh|status}" >&2; exit 1 ;;
+		esac
+		exit $?
+	;;
 	status)
 		Menu_Status
 		exit 0
@@ -4326,9 +4636,11 @@ case "$1" in
 		Auto_Cron create 2>/dev/null
 		Auto_DNSMASQ create 2>/dev/null
 		Auto_ServiceEvent create 2>/dev/null
+		Auto_NetworkMapServiceEventEnd create 2>/dev/null
 		Auto_ServiceStart create 2>/dev/null
 		Auto_OpenVPNEvent create 2>/dev/null
 		Shortcut_Script create
+		NetworkMap_Apply
 		exit 0
 	;;
 	postupdate)
@@ -4338,9 +4650,12 @@ case "$1" in
 		Auto_Cron create 2>/dev/null
 		Auto_DNSMASQ create 2>/dev/null
 		Auto_ServiceEvent create 2>/dev/null
+		Auto_NetworkMapServiceEventEnd create 2>/dev/null
 		Auto_ServiceStart create 2>/dev/null
 		Auto_OpenVPNEvent create 2>/dev/null
 		Shortcut_Script create
+		Update_File YazFi_networkmap.js
+		NetworkMap_Apply
 		exit 0
 	;;
 	uninstall)
