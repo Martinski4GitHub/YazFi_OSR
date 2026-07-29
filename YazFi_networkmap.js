@@ -1,3 +1,6 @@
+/**----------------------------**/
+/** Last Modified: 2026-Jul-29 **/
+/**----------------------------**/
 
 /* YAZFI_NETWORKMAP_INJECT_V1 */
 var yazfiClientData = [];
@@ -5,7 +8,8 @@ var yazfiClientDataTime = 0;
 var yazfiClientRequestActive = false;
 var yazfiClientRebuildActive = false;
 
-function yazfiRequestClientData(force) {
+function yazfiRequestClientData(force)
+{
     var now = new Date().getTime();
 
     if (yazfiClientRequestActive)
@@ -25,7 +29,8 @@ function yazfiRequestClientData(force) {
             yazfiClientRequestActive = false;
             yazfiClientDataTime = new Date().getTime();
 
-            if (xhr.status === 200 || xhr.status === 0) {
+            if (xhr.status === 200 || xhr.status === 0)
+            {
                 try {
                     var parsed = JSON.parse(xhr.responseText);
                     yazfiClientData = (parsed && typeof parsed.length !== "undefined") ? parsed : [];
@@ -36,7 +41,8 @@ function yazfiRequestClientData(force) {
             }
 
             /* Rebuild once after fresh guest data arrives. */
-            if (!yazfiClientRebuildActive && typeof genClientList === "function") {
+            if (!yazfiClientRebuildActive && typeof genClientList === "function")
+            {
                 yazfiClientRebuildActive = true;
                 try {
                     genClientList();
@@ -56,7 +62,8 @@ function yazfiRequestClientData(force) {
     }
 }
 
-function yazfiFallbackSourceClient() {
+function yazfiFallbackSourceClient()
+{
     return {
         from: "networkmapd",
         isOnline: "1",
@@ -94,11 +101,13 @@ function yazfiFallbackSourceClient() {
     };
 }
 
-function yazfiMergeIntoOriginData() {
+function yazfiMergeIntoOriginData()
+{
     try {
         if (typeof originData === "undefined" ||
             !originData.fromNetworkmapd ||
-            !originData.fromNetworkmapd[0]) {
+            !originData.fromNetworkmapd[0])
+        {
             yazfiRequestClientData(false);
             return;
         }
@@ -107,38 +116,42 @@ function yazfiMergeIntoOriginData() {
         if (!block.maclist || typeof block.maclist.length === "undefined")
             block.maclist = [];
 
-        var i;
-        var key;
+        var i, key, seed = null;
 
         /* Remove clients inserted during the previous rebuild. */
-        for (i = block.maclist.length - 1; i >= 0; i--) {
+        for (i = block.maclist.length - 1; i >= 0; i--)
+        {
             key = block.maclist[i];
-            if (block[key] && block[key]._yazfiInjected === "1") {
+            if (block[key] && block[key]._yazfiInjected === "1")
+            {
                 delete block[key];
                 block.maclist.splice(i, 1);
             }
         }
 
-        var seed = null;
-        for (i = 0; i < block.maclist.length; i++) {
+        for (i = 0; i < block.maclist.length; i++)
+        {
             key = block.maclist[i];
-            if (block[key] && typeof block[key] === "object") {
+            if (block[key] && typeof block[key] === "object")
+            {
                 seed = block[key];
                 break;
             }
         }
 
-        for (i = 0; i < yazfiClientData.length; i++) {
+        for (i = 0; i < yazfiClientData.length; i++)
+        {
             var guest = yazfiClientData[i];
             if (!guest || !guest.mac || !guest.ip)
                 continue;
 
             var mac = String(guest.mac).toUpperCase();
-            var exists = false;
-            var j;
+            var j, obj, exists = false;
 
-            for (j = 0; j < block.maclist.length; j++) {
-                if (String(block.maclist[j]).toUpperCase() === mac) {
+            for (j = 0; j < block.maclist.length; j++)
+            {
+                if (String(block.maclist[j]).toUpperCase() === mac)
+                {
                     exists = true;
                     break;
                 }
@@ -148,7 +161,6 @@ function yazfiMergeIntoOriginData() {
             if (exists || (block[mac] && block[mac]._yazfiInjected !== "1"))
                 continue;
 
-            var obj;
             try {
                 obj = seed ? JSON.parse(JSON.stringify(seed)) : yazfiFallbackSourceClient();
             }
