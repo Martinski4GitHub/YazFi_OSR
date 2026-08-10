@@ -17,7 +17,7 @@
 ##       Guest Network DHCP script and for       ##
 ##            AsusWRT-Merlin firmware            ##
 ###################################################
-# Last Modified: 2026-Jul-29
+# Last Modified: 2026-Aug-09
 #--------------------------------------------------
 
 ######       Shellcheck directives     ######
@@ -43,7 +43,7 @@ readonly SCRIPT_NAME="YazFi"
 readonly SCRIPT_CONF="/jffs/addons/$SCRIPT_NAME.d/config"
 readonly YAZFI_VERSION="v4.4.12"
 readonly SCRIPT_VERSION="v4.4.12"
-readonly SCRIPT_VERSTAG="26072900"
+readonly SCRIPT_VERSTAG="26080922"
 SCRIPT_BRANCH="develop"
 SCRIPT_REPO="https://raw.githubusercontent.com/AMTM-OSR/$SCRIPT_NAME/$SCRIPT_BRANCH"
 readonly SCRIPT_DIR="/jffs/addons/$SCRIPT_NAME.d"
@@ -2041,11 +2041,13 @@ NetworkMap_Daemon()
 			echo "$$" > "$NETWORKMAP_PIDFILE"
 			trap '[ "$(cat "$NETWORKMAP_PIDFILE" 2>/dev/null)" = "$$" ] && rm -f "$NETWORKMAP_PIDFILE"' EXIT
 			trap 'exit 0' INT TERM
+			renice 15 $$
 			while NetworkMap_Config_Enabled
 			do
 				NetworkMap_Generate_JSON
 				sleep "$NETWORKMAP_REFRESH_SECS"
 			done
+			renice 0 $$
 			printf '[]\n' > "$NETWORKMAP_JSON"
 		;;
 	esac
@@ -4305,69 +4307,92 @@ Menu_Status()
 	renice 0 $$
 }
 
+##----------------------------------------##
+## Modified by Martinski W. [2026-Aug-09] ##
+##----------------------------------------##
 Menu_Diagnostics()
 {
-	printf "\n${BOLD}This will collect the following. Files are encrypted with a unique random passphrase.${CLEARFORMAT}\n"
-	printf "\n${BOLD} - iptables rules${CLEARFORMAT}"
-	printf "\n${BOLD} - ebtables rules${CLEARFORMAT}"
-	printf "\n${BOLD} - %s${CLEARFORMAT}" "$SCRIPT_CONF"
-	printf "\n${BOLD} - %s${CLEARFORMAT}" "$DNSCONF"
-	printf "\n${BOLD} - /jffs/scripts/firewall-start${CLEARFORMAT}"
-	printf "\n${BOLD} - /jffs/scripts/service-event${CLEARFORMAT}\n\n"
+    local DIAG_DPath="/tmp/${SCRIPT_NAME}Diag"
+	local DIAG_FPath="/tmp/${SCRIPT_NAME}.tar.gz"
+
+	printf "\n ${BOLD}This will collect the following information."
+	printf "\n Files are encrypted with a unique random passphrase.${CLRct}"
+	printf "\n ${WARN}[Make sure to copy and save the random passphrase]${CLRct}\n"
+	printf "\n ${BOLD} - iptables rules${CLRct}"
+	printf "\n ${BOLD} - ebtables rules${CLRct}"
+	printf "\n ${BOLD} - %s${CLRct}" "$SCRIPT_CONF"
+	printf "\n ${BOLD} - %s${CLRct}" "$DNSCONF"
+	printf "\n ${BOLD} - /jffs/scripts/openvpn-event${CLRct}"
+	printf "\n ${BOLD} - /jffs/scripts/firewall-start${CLRct}"
+	printf "\n ${BOLD} - /jffs/scripts/services-start${CLRct}"
+	printf "\n ${BOLD} - /jffs/scripts/service-event${CLRct}"
+	printf "\n ${BOLD} - /jffs/scripts/service-event-end${CLRct}"
+	printf "\n ${BOLD} - /jffs/scripts/dnsmasq.postconf${CLRct}\n\n"
+
 	while true
 	do
-		printf "\n${BOLD}Do you want to continue? (y/n)${CLEARFORMAT}  "
+		printf "\n ${BOLD}Do you want to continue? (y/n)${CLRct}  "
 		read -r confirm
 		case "$confirm" in
 			y|Y)
 				break
 			;;
 			n|N)
-				printf "\\n${BOLD}User declined, returning to menu${CLEARFORMAT}\\n\\n"
+				printf "\n ${MGNTct}User declined. Returning to main menu${CLRct}\n\n"
 				return 1
 			;;
 			*)
-				printf "\\nPlease choose a valid option (y/n)\\n\\n"
+				printf "\n Please choose a valid option (y/n)\n\n"
 			;;
 		esac
 	done
 
-	printf "\n\n${BOLD}Generating %s diagnostics...${CLEARFORMAT}\n\n" "$SCRIPT_NAME"
+	printf "\n\n ${BOLD}Generating %s diagnostics...${CLRct}\n" "$SCRIPT_NAME"
 
-	DIAGPATH="/tmp/${SCRIPT_NAME}Diag"
-	mkdir -p "$DIAGPATH"
+	mkdir -p "$DIAG_DPath"
+	if [ ! -d "$DIAG_DPath" ]
+	then
+		printf "\n ${REDct}**ERROR**: Unable to create temporary directory.${CLRct}\n\n"
+		return 1
+	fi
 
-	iptables-save > "$DIAGPATH/iptables.txt"
+	iptables-save > "$DIAG_DPath/iptables.txt"
 
-	ebtables -L > "$DIAGPATH/ebtables.txt"
-	echo "" >> "$DIAGPATH/ebtables.txt"
-	ebtables -t broute -L >> "$DIAGPATH/ebtables.txt"
+	ebtables -L > "$DIAG_DPath/ebtables.txt"
+	echo >> "$DIAG_DPath/ebtables.txt"
+	ebtables -t broute -L >> "$DIAG_DPath/ebtables.txt"
 
-	ip rule show > "$DIAGPATH/iprule.txt"
-	ip route show > "$DIAGPATH/iproute.txt"
-	ip route show table all | grep "table" | sed 's/.*\(table.*\)/\1/g' | awk '{print $2}' | sort | uniq | grep ovpn > "$DIAGPATH/routetablelist.txt"
+	ip rule show > "$DIAG_DPath/iprule.txt"
+	ip route show > "$DIAG_DPath/iproute.txt"
+	ip route show table all | grep "table" | sed 's/.*\(table.*\)/\1/g' | awk '{print $2}' | sort | uniq | grep ovpn > "$DIAG_DPath/routetablelist.txt"
 
 	while IFS='' read -r line || [ -n "$line" ]
 	do
-		ip route show table "$line" > "$DIAGPATH/iproute_$line.txt"
-	done < "$DIAGPATH/routetablelist.txt"
+		ip route show table "$line" > "$DIAG_DPath/iproute_$line.txt"
+	done < "$DIAG_DPath/routetablelist.txt"
 
-	ifconfig -a > "$DIAGPATH/ifconfig.txt"
+	ifconfig -a > "$DIAG_DPath/ifconfig.txt"
 
-	cp "$SCRIPT_CONF" "$DIAGPATH/$SCRIPT_NAME.conf"
-	cp "$DNSCONF" "$DIAGPATH/$SCRIPT_NAME.dnsmasq"
-	cp /jffs/scripts/dnsmasq.postconf "$DIAGPATH/dnsmasq.postconf"
-	cp /jffs/scripts/firewall-start "$DIAGPATH/firewall-start"
-	cp /jffs/scripts/service-event "$DIAGPATH/service-event"
+	cp "$SCRIPT_CONF" "$DIAG_DPath/${SCRIPT_NAME}.conf"
+	cp "$DNSCONF" "$DIAG_DPath/${SCRIPT_NAME}.dnsmasq"
+
+	cp /jffs/scripts/openvpn-event "$DIAG_DPath/openvpn-event"
+	cp /jffs/scripts/firewall-start "$DIAG_DPath/firewall-start"
+	cp /jffs/scripts/services-start "$DIAG_DPath/services-start"
+	cp /jffs/scripts/service-event "$DIAG_DPath/service-event"
+	cp /jffs/scripts/service-event-end "$DIAG_DPath/service-event-end"
+	cp /jffs/scripts/dnsmasq.postconf "$DIAG_DPath/dnsmasq.postconf"
 
 	SEC="$(Generate_Random_String 32)"
-	tar -czf "/tmp/$SCRIPT_NAME.tar.gz" -C "$DIAGPATH" .
-	/usr/sbin/openssl enc -aes-256-cbc -pbkdf2 -k "$SEC" -e -in "/tmp/$SCRIPT_NAME.tar.gz" -out "/tmp/$SCRIPT_NAME.tar.gz.enc"
+	tar -czf "$DIAG_FPath" -C "$DIAG_DPath" .
+	/usr/sbin/openssl enc -aes-256-cbc -pbkdf2 -k "$SEC" -e -in "$DIAG_FPath" -out "${DIAG_FPath}.enc"
 
-	Print_Output true "Diagnostics saved to /tmp/$SCRIPT_NAME.tar.gz.enc with passphrase $SEC" "$PASS"
+	printf "\n ${BOLD}Diagnostics saved to ${GRNct}${DIAG_FPath}.enc${CLRct}"
+	printf " with passphrase ${GRNct}${SEC}${CLRct}"
+	printf "\n ${MGNTct}[Make sure to copy and save the random passphrase]${CLRct}\n\n"
 
-	rm -f "/tmp/$SCRIPT_NAME.tar.gz" 2>/dev/null
-	rm -rf "$DIAGPATH" 2>/dev/null
+	rm -f "$DIAG_FPath" 2>/dev/null
+	rm -fr "$DIAG_DPath" 2>/dev/null
 	SEC=""
 }
 
