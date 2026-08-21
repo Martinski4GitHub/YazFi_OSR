@@ -17,7 +17,7 @@
 ##       Guest Network DHCP script and for       ##
 ##            AsusWRT-Merlin firmware            ##
 ###################################################
-# Last Modified: 2026-Aug-09
+# Last Modified: 2026-Aug-21
 #--------------------------------------------------
 
 ######       Shellcheck directives     ######
@@ -41,9 +41,9 @@
 ### Start of script variables ###
 readonly SCRIPT_NAME="YazFi"
 readonly SCRIPT_CONF="/jffs/addons/$SCRIPT_NAME.d/config"
-readonly YAZFI_VERSION="v4.4.12"
-readonly SCRIPT_VERSION="v4.4.12"
-readonly SCRIPT_VERSTAG="26080922"
+readonly YAZFI_VERSION="v4.4.13"
+readonly SCRIPT_VERSION="v4.4.13"
+readonly SCRIPT_VERSTAG="26082101"
 SCRIPT_BRANCH="develop"
 SCRIPT_REPO="https://raw.githubusercontent.com/AMTM-OSR/$SCRIPT_NAME/$SCRIPT_BRANCH"
 readonly SCRIPT_DIR="/jffs/addons/$SCRIPT_NAME.d"
@@ -127,12 +127,22 @@ readonly MACaddr_RegExp="([a-fA-F0-9]{2}([:][a-fA-F0-9]{2}){5})"
 ##-------------------------------------##
 _GetWiFiVirtualInterfaceNames_()
 {
-   local IFListStr=""
-   for IFname in $(nvram get wl0_vifnames) $(nvram get wl1_vifnames) $(nvram get wl2_vifnames) $(nvram get wl3_vifnames)
+   local wifiPrefix  wifiNames  wifiNameList=""  IFname  IFListStr=""
+
+   for wifiPrefix in wl0 wl1 wl2 wl3
+   do
+       wifiNames="$(nvram get "${wifiPrefix}_vifnames")"
+       [ -z "$wifiNames" ] && continue
+       wifiNameList="${wifiNameList:+$wifiNameList }$wifiNames"
+   done
+
+   for IFname in $wifiNameList
    do
        IFname="$(echo "$IFname" | grep -E "^wl[0-3][.][1-3]$")"
-       [ -n "$IFname" ] && { [ -n "$IFListStr" ] && IFListStr="$IFListStr $IFname" || IFListStr="$IFname" ; }
+       [ -z "$IFname" ] && continue
+       IFListStr="${IFListStr:+$IFListStr }$IFname"
    done
+
    echo "$IFListStr"
 }
 
@@ -279,32 +289,41 @@ Print_Output()
 		esac
 		logger -t "${SCRIPT_NAME}_[$$]" -p $prioNum "$2"
 	fi
-	printf "${BOLD}${3}%s${CLEARFORMAT}\n\n" "$2"
+	printf "${BOLD}${3}%s${CLRct}\n\n" "$2"
 }
 
 Generate_Random_String()
 {
 	PASSLENGTH=16
-	if Validate_Number "" "$1" silent
+	if Validate_Number '' "$1" silent
 	then
 		if [ "$1" -le 32 ] && [ "$1" -ge 8 ]; then
 			PASSLENGTH="$1"
 		else
-			printf "${BOLD}Number is not between 8 and 32, using default of 16 characters${CLEARFORMAT}\\n"
+			printf "${BOLD}Number is not between 8 and 32, using default of 16 characters${CLRct}\n"
 		fi
 	else
-		printf "${BOLD}Invalid number provided, using default of 16 characters${CLEARFORMAT}\\n"
+		printf "${BOLD}Invalid number provided, using default of 16 characters${CLRct}\n"
 	fi
 
 	< /dev/urandom tr -cd 'A-Za-z0-9' | head -c "$PASSLENGTH"
 }
 
-Escape_Sed(){
-	sed -e 's/</\\</g;s/>/\\>/g;s/ /\\ /g'
-}
+Escape_Sed()
+{ sed -e 's/</\\</g;s/>/\\>/g;s/ /\\ /g' ; }
 
-Get_Iface_Var(){
-	echo "$1" | sed -e 's/\.//g'
+Get_Iface_Var()
+{ echo "$1" | sed -e 's/\.//g' ; }
+
+##-------------------------------------##
+## Added by Martinski W. [2026-Aug-20] ##
+##-------------------------------------##
+_DOStoUNIX_()
+{
+    if [ $# -eq 0 ] || [ -z "$1" ] || [ ! -s "$1" ]
+    then return 1 ; fi
+    if grep -q "$(printf '\r\n')" "$1" 2>/dev/null
+    then dos2unix "$1" ; fi
 }
 
 ##----------------------------------------##
@@ -365,9 +384,22 @@ GetIFaceUILabel()
 ##----------------------------------------##
 ## Modified by Martinski W. [2022-Dec-23] ##
 ##----------------------------------------##
+Menu_Get_Guest_Name()
+{
+	if [ $# -eq 0 ] || [ -z "$1" ] ; then echo ; fi
+	theIFprefix="$(echo "$1" | cut -d '.' -f1)"
+	theIFnumber="$(echo "$1" | cut -d '.' -f2)"
+	theIFlabel="$(GetIFaceUILabel "$theIFprefix")"
+
+	echo "YazFi $theIFlabel GN#$theIFnumber"
+}
+
+##----------------------------------------##
+## Modified by Martinski W. [2022-Dec-23] ##
+##----------------------------------------##
 Get_Guest_Name()
 {
-	if [ $# -eq 0 ] || [ -z "$1" ] ; then echo "" ; fi
+	if [ $# -eq 0 ] || [ -z "$1" ] ; then echo ; fi
 	theIFprefix="$(echo "$1" | cut -d '.' -f1)"
 	theIFnumber="$(echo "$1" | cut -d '.' -f2)"
 	theIFlabel="$(GetIFaceUILabel "$theIFprefix")"
@@ -380,7 +412,7 @@ Get_Guest_Name()
 ##----------------------------------------##
 Get_Guest_Name_Old()
 {
-	if [ $# -eq 0 ] || [ -z "$1" ] ; then echo "" ; fi
+	if [ $# -eq 0 ] || [ -z "$1" ] ; then echo ; fi
 	theIFprefix="$(echo "$1" | cut -d '.' -f1)"
 	theIFnumber="$(echo "$1" | cut -d '.' -f2)"
 	theIFlabel="$(GetIFaceUILabel "$theIFprefix")"
@@ -409,8 +441,8 @@ Iface_Manage()
 			ifconfig "$2" 0.0.0.0
 		;;
 		deleteall)
-			for IFACE in $IFACELIST; do
-				Iface_Manage delete "$IFACE"
+			for IFACE in $IFACELIST
+			do Iface_Manage delete "$IFACE"
 			done
 		;;
 	esac
@@ -1224,50 +1256,52 @@ IP_Router()
 	fi
 }
 
-Validate_Enabled_IFACE()
-{
-	IFACE_TEST="$(nvram get "${1}_bss_enabled")"
-	if ! Validate_Number "" "$IFACE_TEST" silent
-	then IFACE_TEST=0
-	fi
-
-	if [ "$IFACE_TEST" -eq 0 ]
-	then
-		if [ $# -lt 2 ] || [ -z "$2" ]
-		then
-			Print_Output false "$1 - Interface NOT enabled/configured in Web GUI (Guest Network menu)" "$ERR"
-		fi
-		return 1
-	else
-		return 0
-	fi
-}
-
 ##----------------------------------------##
 ## Modified by Martinski W. [2026-Apr-15] ##
 ##----------------------------------------##
-Validate_Exists_IFACE()
+Validate_IFACE_Enabled()
 {
-	local validIFace=false
-	for IFACE_EXIST in $IFACELIST
-	do
-		if [ "$1" = "$IFACE_EXIST" ]
-		then
-			validIFace=true
-			break
-		fi
-	done
-
-	if "$validIFace"
-	then
-		return 0
-	else
-		if [ $# -lt 2 ] || [ -z "$2" ]
-		then
-			Print_Output false "$1 - Interface NOT supported on this router" "$ERR"
-		fi
-		return 1
+	IFACE_TEST="$(nvram get "${1}_bss_enabled")"
+	if ! Validate_Number '' "$IFACE_TEST" silent
+	then IFACE_TEST=0
 	fi
+	[ "$IFACE_TEST" -eq 1 ] && return 0
+
+	if [ $# -lt 2 ] || [ -z "$2" ]
+	then
+		Print_Output false "$1 - Interface NOT enabled/configured in Web GUI (Guest Network menu)" "$ERR"
+	fi
+	return 1
+}
+
+##----------------------------------------##
+## Modified by Martinski W. [2026-Aug-20] ##
+##----------------------------------------##
+Validate_IFACE_Exists()
+{
+	if echo "$IFACELIST" | grep -qw "$1"
+	then return 0
+	fi
+	if [ $# -lt 2 ] || [ -z "$2" ]
+	then
+		Print_Output false "$1 - Interface NOT supported on this router" "$ERR"
+	fi
+	return 1
+}
+
+##-------------------------------------##
+## Added by Martinski W. [2026-Aug-20] ##
+##-------------------------------------##
+Validate_IFACE_Support()
+{
+	if echo "$IFACELIST_ORIG" | grep -qw "$1"
+	then return 0
+	fi
+	if [ $# -lt 2 ] || [ -z "$2" ]
+	then
+		Print_Output false "$1 - Interface NOT supported on this router" "$ERR"
+	fi
+	return 1
 }
 
 Validate_IP()
@@ -1437,7 +1471,7 @@ Conf_FromSettings()
 		if [ "$(grep "yazfi_" $SETTINGSFILE | grep -v "version" -c)" -gt 0 ]
 		then
 			Print_Output true "Updated settings from WebUI found, merging into $SCRIPT_CONF" "$PASS"
-			cp -a "$SCRIPT_CONF" "$SCRIPT_CONF.bak"
+			cp -fp "$SCRIPT_CONF" "${SCRIPT_CONF}.bak"
 			grep "yazfi_" "$SETTINGSFILE" | grep -v "version" > "$TMPFILE"
 			sed -i "s/yazfi_//g;s/ /=/g" "$TMPFILE"
 			while IFS='' read -r line || [ -n "$line" ]
@@ -1449,10 +1483,9 @@ Conf_FromSettings()
 			done < "$TMPFILE"
 			grep 'yazfi_version' "$SETTINGSFILE" > "$TMPFILE"
 			sed -i "\\~yazfi_~d" "$SETTINGSFILE"
-			mv "$SETTINGSFILE" "$SETTINGSFILE.bak"
-			cat "$SETTINGSFILE.bak" "$TMPFILE" > "$SETTINGSFILE"
-			rm -f "$TMPFILE"
-			rm -f "$SETTINGSFILE.bak"
+			mv -f "$SETTINGSFILE" "${SETTINGSFILE}.bak"
+			cat "${SETTINGSFILE}.bak" "$TMPFILE" > "$SETTINGSFILE"
+			rm -f "$TMPFILE" "${SETTINGSFILE}.bak"
 			Print_Output true "Merge of updated settings from WebUI completed successfully" "$PASS"
 		else
 			Print_Output false "No updated settings from WebUI found, no merge into $SCRIPT_CONF necessary" "$PASS"
@@ -1460,6 +1493,9 @@ Conf_FromSettings()
 	fi
 }
 
+##----------------------------------------##
+## Modified by Martinski W. [2022-Dec-07] ##
+##----------------------------------------##
 Conf_FixBlanks()
 {
 	if ! Conf_Exists
@@ -1468,15 +1504,10 @@ Conf_FixBlanks()
 		Clear_Lock
 		return 1
 	fi
-
 	NetworkMap_Ensure_Config
 
-	##-------------------------------------##
-	## Added by Martinski W. [2022-Dec-07] ##
-	##-------------------------------------##
 	. "$SCRIPT_CONF"
-
-	cp -a "$SCRIPT_CONF" "$SCRIPT_CONF.bak"
+	cp -fp "$SCRIPT_CONF" "${SCRIPT_CONF}.bak"
 
 	for IFACEBLANK in $IFACELIST_FULL
 	do
@@ -1498,12 +1529,14 @@ Conf_FixBlanks()
 			Print_Output false "${IFACETMPBLANK}_IPADDR is blank, setting to next available subnet" "$WARN"
 		fi
 
-		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_DHCPSTART")" ]; then
+		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_DHCPSTART")" ]
+		then
 			sed -i -e "s/${IFACETMPBLANK}_DHCPSTART=/${IFACETMPBLANK}_DHCPSTART=2/" "$SCRIPT_CONF"
 			Print_Output false "${IFACETMPBLANK}_DHCPSTART is blank, setting to 2" "$WARN"
 		fi
 
-		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_DHCPEND")" ]; then
+		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_DHCPEND")" ]
+		then
 			sed -i -e "s/${IFACETMPBLANK}_DHCPEND=/${IFACETMPBLANK}_DHCPEND=254/" "$SCRIPT_CONF"
 			Print_Output false "${IFACETMPBLANK}_DHCPEND is blank, setting to 254" "$WARN"
 		fi
@@ -1555,49 +1588,54 @@ Conf_FixBlanks()
 			fi
 		fi
 
-		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_FORCEDNS")" ]; then
+		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_FORCEDNS")" ]
+		then
 			sed -i -e "s/${IFACETMPBLANK}_FORCEDNS=/${IFACETMPBLANK}_FORCEDNS=false/" "$SCRIPT_CONF"
 			Print_Output false "${IFACETMPBLANK}_FORCEDNS is blank, setting to false" "$WARN"
 		fi
 
-		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_ALLOWINTERNET")" ]; then
+		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_ALLOWINTERNET")" ]
+		then
 			ALLOWINTERNETTMP="true"
 			sed -i -e "s/${IFACETMPBLANK}_ALLOWINTERNET=/${IFACETMPBLANK}_ALLOWINTERNET=true/" "$SCRIPT_CONF"
 			Print_Output false "${IFACETMPBLANK}_ALLOWINTERNET is blank, setting to true" "$WARN"
 		fi
 
-		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_REDIRECTALLTOVPN")" ]; then
+		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_REDIRECTALLTOVPN")" ]
+		then
 			REDIRECTTMP="false"
 			sed -i -e "s/${IFACETMPBLANK}_REDIRECTALLTOVPN=/${IFACETMPBLANK}_REDIRECTALLTOVPN=false/" "$SCRIPT_CONF"
 			Print_Output false "${IFACETMPBLANK}_REDIRECTALLTOVPN is blank, setting to false" "$WARN"
 		fi
 
-		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_VPNCLIENTNUMBER")" ]; then
+		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_VPNCLIENTNUMBER")" ]
+		then
 			sed -i -e "s/${IFACETMPBLANK}_VPNCLIENTNUMBER=/${IFACETMPBLANK}_VPNCLIENTNUMBER=1/" "$SCRIPT_CONF"
 			Print_Output false "${IFACETMPBLANK}_VPNCLIENTNUMBER is blank, setting to 1" "$WARN"
 		fi
 
-		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_TWOWAYTOGUEST")" ]; then
+		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_TWOWAYTOGUEST")" ]
+		then
 			sed -i -e "s/${IFACETMPBLANK}_TWOWAYTOGUEST=/${IFACETMPBLANK}_TWOWAYTOGUEST=false/" "$SCRIPT_CONF"
 			Print_Output false "${IFACETMPBLANK}_TWOWAYTOGUEST is blank, setting to false" "$WARN"
 		fi
 
-		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_ONEWAYTOGUEST")" ]; then
+		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_ONEWAYTOGUEST")" ]
+		then
 			sed -i -e "s/${IFACETMPBLANK}_ONEWAYTOGUEST=/${IFACETMPBLANK}_ONEWAYTOGUEST=false/" "$SCRIPT_CONF"
 			Print_Output false "${IFACETMPBLANK}_ONEWAYTOGUEST is blank, setting to false" "$WARN"
 		fi
 
-		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_CLIENTISOLATION")" ]; then
+		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_CLIENTISOLATION")" ]
+		then
 			sed -i -e "s/${IFACETMPBLANK}_CLIENTISOLATION=/${IFACETMPBLANK}_CLIENTISOLATION=false/" "$SCRIPT_CONF"
 			Print_Output false "${IFACETMPBLANK}_CLIENTISOLATION is blank, setting to false" "$WARN"
 		fi
 	done
 
-	##-------------------------------------##
-	## Added by Martinski W. [2022-Dec-07] ##
-	##-------------------------------------##
-	if ! diff -q "$SCRIPT_CONF" "$SCRIPT_CONF.bak" >/dev/null 2>&1
-	then . "$SCRIPT_CONF" ; fi
+	if ! diff -q "$SCRIPT_CONF" "${SCRIPT_CONF}.bak" >/dev/null 2>&1
+	then . "$SCRIPT_CONF"
+	fi
 }
 
 ##----------------------------------------##
@@ -1624,26 +1662,26 @@ Conf_Validate()
 			Print_Output false "${IFACETMP}_ENABLED is blank, setting to false" "$WARN"
 		elif ! Validate_TrueFalse "${IFACETMP}_ENABLED" "$(eval echo '$'"${IFACETMP}_ENABLED")"
 		then
-			IFACE_ENABLED=false
-			IFACE_PASS=false
+			IFACE_PASS=false ; IFACE_ENABLED=false
 		else
 			IFACE_ENABLED="$(eval echo '$'"${IFACETMP}_ENABLED")"
 		fi
 
-		if [ "$IFACE_ENABLED" = "false" ]
+		if ! Validate_IFACE_Support "$IFACE" silent
 		then
 			IFACE_PASS=false
-			Print_Output false "Interface $IFACE is not enabled in $SCRIPT_NAME configuration" "$WARN"
+			"$IFACE_ENABLED" && \
+			Print_Output false "Interface $IFACE is NOT supported on this router" "$ERR"
 		#
-		elif ! echo "$IFACELIST_ORIG" | grep -q "$IFACE"
+		elif ! Validate_IFACE_Enabled "$IFACE" silent
 		then
 			IFACE_PASS=false
-			Print_Output false "Interface $IFACE is not supported on this router" "$ERR"
-		#
-		elif ! Validate_Enabled_IFACE "$IFACE" || ! Validate_Exists_IFACE "$IFACE"
+			Print_Output false "Interface $IFACE is NOT enabled on this router" "$WARN"
+        #
+		elif [ "$IFACE_ENABLED" = "false" ]
 		then
 			IFACE_PASS=false
-			GUESTNET_ENABLED=true
+			Print_Output false "Interface $IFACE is NOT enabled in $SCRIPT_NAME configuration" "$WARN"
 		else
 			GUESTNET_ENABLED=true
 
@@ -1786,7 +1824,7 @@ Conf_Validate()
 				fi
 		fi
 
-		if [ "$IFACE_PASS" = "false" ] && echo "$IFACELIST" | grep -q "$IFACE"
+		if [ "$IFACE_PASS" = "false" ] && echo "$IFACELIST" | grep -qw "$IFACE"
 		then
 			IFACELIST="$(echo "$IFACELIST" | sed 's/'"$IFACE"'//;s/  / /')"
 			if [ "$IFACE_ENABLED" = "false" ]
@@ -1801,7 +1839,7 @@ Conf_Validate()
 
 	if [ "$GUESTNET_ENABLED" = "false" ]
 	then
-		Print_Output true "No $SCRIPT_NAME guest networks are enabled in the configuration file!" "$CRIT"
+		Print_Output true "No $SCRIPT_NAME Guest Networks are enabled in the configuration file!" "$CRIT"
 	fi
 
 	return 0
@@ -2321,10 +2359,10 @@ _CheckFor_WebGUI_Page_()
 
 Conf_Download()
 {
-	mkdir -p "/jffs/addons/$SCRIPT_NAME.d"
-	curl -fsL --retry 4 --retry-delay 5 "$SCRIPT_REPO/$SCRIPT_NAME.config.example" -o "$1"
+	mkdir -p "/jffs/addons/${SCRIPT_NAME}.d"
+	curl -fsL --retry 4 --retry-delay 5 "$SCRIPT_REPO/${SCRIPT_NAME}.config.example" -o "$1"
 	chmod 0644 "$1"
-	dos2unix "$1"
+	_DOStoUNIX_ "$1"
 	sleep 1
 	Clear_Lock
 }
@@ -2337,35 +2375,38 @@ Conf_ADD_Download()
 	config_ADD="${1}.ADD.txt"
 	curl -fsL --retry 4 --retry-delay 5 "$SCRIPT_REPO/${SCRIPT_NAME}.config.ADD.txt" -o "$config_ADD"
 	chmod 0644 "$config_ADD"
-	dos2unix "$config_ADD"
-	[ -f "$config_ADD" ] && return 0 || return 1
+	_DOStoUNIX_ "$config_ADD"
+	[ -s "$config_ADD" ] && return 0 || return 1
 }
 
+##----------------------------------------##
+## Modified by Martinski W. [2026-Aug-20] ##
+##----------------------------------------##
 Conf_Exists()
 {
-	if [ -f "$SCRIPT_CONF" ]
+	if [ -s "$SCRIPT_CONF" ]
 	then
-		dos2unix "$SCRIPT_CONF"
 		chmod 0644 "$SCRIPT_CONF"
-
-		##-------------------------------------##
-		## Added by Martinski W. [2023-Feb-26] ##
-		##-------------------------------------##
+		_DOStoUNIX_ "$SCRIPT_CONF"
 		Update_File "$SCRIPT_CONF"
 
-		if [ ! -f "$SCRIPT_CONF.bak" ]; then
-			cp -a "$SCRIPT_CONF" "$SCRIPT_CONF.bak"
+		if [ ! -s "${SCRIPT_CONF}.bak" ]
+		then
+			cp -fp "$SCRIPT_CONF" "${SCRIPT_CONF}.bak"
 		fi
-		sed -i -e 's/_LANACCESS/_TWOWAYTOGUEST/g' "$SCRIPT_CONF"
-		if ! grep -q "_ONEWAYTOGUEST" "$SCRIPT_CONF"
+		if grep -q '_LANACCESS=' "$SCRIPT_CONF"
+		then
+			sed -i -e 's/_LANACCESS=/_TWOWAYTOGUEST=/g' "$SCRIPT_CONF"
+		fi
+		if ! grep -q "_ONEWAYTOGUEST=" "$SCRIPT_CONF"
 		then
 			for CONFIFACE in $IFACELIST_FULL
 			do
 				CONFIFACETMP="$(Get_Iface_Var "$CONFIFACE")"
-				sed -i "/^${CONFIFACETMP}_TWOWAYTOGUEST=/a ${CONFIFACETMP}_ONEWAYTOGUEST=" "$SCRIPT_CONF"
+				sed -i "/^${CONFIFACETMP}_TWOWAYTOGUEST=/a ${CONFIFACETMP}_ONEWAYTOGUEST=false" "$SCRIPT_CONF"
 			done
 		fi
-		if ! grep -q "_ALLOWINTERNET" "$SCRIPT_CONF"
+		if ! grep -q "_ALLOWINTERNET=" "$SCRIPT_CONF"
 		then
 			for CONFIFACE in $IFACELIST_FULL
 			do
@@ -2373,6 +2414,15 @@ Conf_Exists()
 				sed -i "/^${CONFIFACETMP}_FORCEDNS=/a ${CONFIFACETMP}_ALLOWINTERNET=true" "$SCRIPT_CONF"
 			done
 		fi
+		if ! grep -q "_TWOWAYTOGUEST_MODE=" "$SCRIPT_CONF"
+		then
+			for IFaceID in $IFACELIST_FULL
+			do
+				IFaceVar="$(Get_Iface_Var "$IFaceID")"
+				sed -i "/^${IFaceVar}_CLIENTISOLATION=/a ${IFaceVar}_TWOWAYTOGUEST_MODE=NAT" "$SCRIPT_CONF"
+			done
+		fi
+
 		sed -i -e 's/"//g' "$SCRIPT_CONF"
 		. "$SCRIPT_CONF"
 		return 0
@@ -2525,7 +2575,7 @@ Firewall_Rules_ONEorTWO_WAY()
 }
 
 ##----------------------------------------##
-## Modified by Martinski W. [2024-Jan-06] ##
+## Modified by Martinski W. [2026-Aug-20] ##
 ##----------------------------------------##
 Firewall_Rules()
 {
@@ -2540,6 +2590,7 @@ Firewall_Rules()
 	GuestNetIPcidr="${GuestNetIPaddr}.0/24"
 	doTWO_WAYtoGUEST="$(eval echo '$'"$(Get_Iface_Var "$IFACE")_TWOWAYTOGUEST")"
 	doONE_WAYtoGUEST="$(eval echo '$'"$(Get_Iface_Var "$IFACE")_ONEWAYTOGUEST")"
+	TwoWayToGuestMODE="$(_TwoWayToGuest_RoutingType_ check "$IFACE")"
 
 	case $1 in
 		delete) ACTIONS="-D" ;;
@@ -2558,9 +2609,6 @@ Firewall_Rules()
 
 		iptables "$ACTION" "$FWRD" -i "$IFACE" -m comment --comment "$GuestNetBandID" -j ACCEPT
 
-		##----------------------------------------##
-		## Modified by Martinski W. [2023-Dec-22] ##
-		##----------------------------------------##
 		if [ "$doTWO_WAYtoGUEST" = "false" ] || [ "$doONE_WAYtoGUEST" = "false" ]
 		then
 			iptables -D "$FWRD" -i wl+ -o "$IFACE" -j "$LGRJT"
@@ -2582,7 +2630,11 @@ Firewall_Rules()
 		if [ "$doTWO_WAYtoGUEST" = "true" ] || [ "$doONE_WAYtoGUEST" = "true" ]
 		then
 			iptables -D "$FWRD" ! -i "$IFACE_WAN" -o "$IFACE" -j "$LGRJT"
-			iptables -t nat "$ACTION" POSTROUTING -s "$LAN_IPcidr" -d "$GuestNetIPcidr" -o "$IFACE" -m comment --comment "LAN to $GuestNetBandID" -j MASQUERADE
+
+			if [ "$ACTION" = "-D" ] || [ "$doTWO_WAYtoGUEST" = "false" ] || [ "$TwoWayToGuestMODE" = "NAT" ]
+			then
+				iptables -t nat "$ACTION" POSTROUTING -s "$LAN_IPcidr" -d "$GuestNetIPcidr" -o "$IFACE" -m comment --comment "LAN to $GuestNetBandID" -j MASQUERADE
+			fi
 		fi
 
 		if [ "$doTWO_WAYtoGUEST" = "true" ]
@@ -2590,7 +2642,11 @@ Firewall_Rules()
 			iptables -D "$FWRD" -i "$IFACE" ! -o "$IFACE_WAN" -j "$LGRJT"
 			iptables "$ACTION" "$FWRD" ! -i "$IFACE_WAN" -o "$IFACE" -m comment --comment "LAN to $GuestNetBandID" -j ACCEPT
 			iptables "$ACTION" "$FWRD" -i "$IFACE" ! -o "$IFACE_WAN" -m comment --comment "$GuestNetBandID to LAN" -j ACCEPT
-			iptables -t nat "$ACTION" POSTROUTING -s "$GuestNetIPcidr" -d "$LAN_IPcidr" -o "$LAN_IFname" -m comment --comment "$GuestNetBandID to LAN" -j MASQUERADE
+
+			if [ "$ACTION" = "-D" ] || [ "$TwoWayToGuestMODE" = "NAT" ]
+			then
+				iptables -t nat "$ACTION" POSTROUTING -s "$GuestNetIPcidr" -d "$LAN_IPcidr" -o "$LAN_IFname" -m comment --comment "$GuestNetBandID to LAN" -j MASQUERADE
+			fi
 		fi
 
 		if [ "$doONE_WAYtoGUEST" = "true" ]
@@ -2628,8 +2684,10 @@ Firewall_Rules()
 		iptables -t nat "$ACTION" POSTROUTING -s "$GuestNetIPcidr" -d "$GuestNetIPcidr" -o "$IFACE" -m comment --comment "$GuestNetBandID" -j MASQUERADE
 
 		ENABLED_NTPD=0
-		if [ -f /jffs/scripts/nat-start ]; then
-			if [ "$(grep -c '# ntpMerlin' /jffs/scripts/nat-start)" -gt 0 ]; then ENABLED_NTPD=1; fi
+		if [ -s /jffs/scripts/nat-start ]
+		then
+			if [ "$(grep -c '# ntpMerlin' /jffs/scripts/nat-start)" -gt 0 ]
+			then ENABLED_NTPD=1; fi
 		fi
 
 		if [ "$ENABLED_NTPD" -eq 1 ]
@@ -3236,13 +3294,11 @@ Config_Networks()
 		Clear_Lock
 		return 1
 	fi
-
 	if ! Conf_Validate
 	then
 		Clear_Lock
 		return 1
 	fi
-
 	. $SCRIPT_CONF
 	modprobe xt_comment
 
@@ -3265,7 +3321,7 @@ Config_Networks()
 		VPNCLIENTNO=$(eval echo '$'"$(Get_Iface_Var "$IFACE")_VPNCLIENTNUMBER")
 
 		if [ "$(eval echo '$'"$(Get_Iface_Var "$IFACE")_ENABLED")" = "true" ] && \
-		   Validate_Enabled_IFACE "$IFACE" silent
+		   Validate_IFACE_Enabled "$IFACE" silent
 		then
 			Iface_Manage create "$IFACE" 2>/dev/null
 
@@ -3557,17 +3613,45 @@ ScriptHeader()
 	printf "${BOLD}####################################################${CLRct}\n\n"
 }
 
+##-------------------------------------##
+## Added by Martinski W. [2026-Aug-20] ##
+##-------------------------------------##
+_HandleInvalidMenuOption_()
+{
+	[ -n "$menuOption" ] && \
+	printf "\n ${REDct}INVALID input [$menuOption]${CLRct}"
+	printf "\n Please choose a valid option.\n\n"
+	PressEnter
+}
+
 ##----------------------------------------##
-## Modified by Martinski W. [2025-Oct-26] ##
+## Modified by Martinski W. [2026-Aug-21] ##
 ##----------------------------------------##
 MainMenu()
 {
+	local menuOption  configChangesMade=false  TwoWayToGuestENABLED
+
+	if _Check_TwoWayToGuest_Enabled_
+	then TwoWayToGuestENABLED=true
+	else TwoWayToGuestENABLED=false
+	fi
+
+	ScriptHeader
+
 	printf " WebUI for %s is available at:\n ${SETTING}%s${CLRct}\n\n" "$SCRIPT_NAME" "$(Get_WebUI_URL)"
 
 	printf "  ${GRNct}1${CLRct}.  Apply %s settings\n\n" "$SCRIPT_NAME"
 	printf "  ${GRNct}2${CLRct}.  Show connected clients using %s\n\n" "$SCRIPT_NAME"
 	printf "  ${GRNct}3${CLRct}.  Edit %s config\n" "$SCRIPT_NAME"
 	printf "  ${GRNct}4${CLRct}.  Edit Guest Network config (SSID + passphrase)\n\n"
+
+	if "$TwoWayToGuestENABLED"
+	then
+		printf " ${GRNct}tw${CLRct}.  Set Guest Network Two-Way Routing Type\n\n"
+	else
+		printf " ${GRAYEDct}tw${CLRct}.  ${GRAYEDct}Set Guest Network Two-Way Routing Type${CLRct}\n\n"
+	fi
+
 	if [ -x /opt/bin/opkg ] && [ -x /opt/bin/qrencode ]
 	then
 		printf " ${GRNct}qr${CLRct}.  Show QR Code for Guest Network\n\n"
@@ -3585,6 +3669,7 @@ MainMenu()
 	do
 		printf " Choose an option:  "
 		read -r menuOption
+
 		case "$menuOption" in
 			1)
 				printf "\n"
@@ -3606,7 +3691,11 @@ MainMenu()
 				printf "\n"
 				if Check_Lock menu
 				then
+					configChangesMade=false
 					Menu_Edit
+					if "$configChangesMade"
+					then . "$SCRIPT_CONF"
+					fi
 				else
 					PressEnter
 				fi
@@ -3619,6 +3708,19 @@ MainMenu()
 					Menu_GuestConfig
 				else
 					PressEnter
+				fi
+				break
+			;;
+			tw)
+				if "$TwoWayToGuestENABLED"
+				then
+					configChangesMade=false
+					_Menu_TwoWayToGuest_RoutingType_
+					if "$configChangesMade"
+					then . "$SCRIPT_CONF"
+					fi
+				else
+					_HandleInvalidMenuOption_
 				fi
 				break
 			;;
@@ -3680,12 +3782,12 @@ MainMenu()
 				done
 			;;
 			*)
-				printf "\n Please choose a valid option.\n\n"
+				_HandleInvalidMenuOption_
+				break
 			;;
 		esac
 	done
 
-	ScriptHeader
 	MainMenu
 }
 
@@ -3790,7 +3892,6 @@ Menu_Install()
 	Clear_Lock
 	PressEnter
 	Download_File "$SCRIPT_REPO/LICENSE" "$SCRIPT_DIR/LICENSE"
-	ScriptHeader
 	MainMenu
 }
 
@@ -3831,30 +3932,44 @@ Menu_Edit()
 	then
 		Conf_Download "$SCRIPT_CONF"
 	fi
+
 	printf "\n ${BOLD}Text editors available:${CLRct}\n\n"
-	printf " 1.  nano (recommended for beginners)\n"
-	printf " 2.  vi\n\n"
-	printf " e.  Exit to main menu\n"
+	printf "  ${GRNct}1${CLRct}. nano (recommended for beginners)\n"
+	printf "  ${GRNct}2${CLRct}. vi\n\n"
+	printf "  ${GRNct}e${CLRct}. Back to main menu\n"
 
 	while true
 	do
 		printf "\n ${BOLD}Choose an option:${CLRct}  "
-		read -r editor
-		case "$editor" in
-			1)
-				textEditor="nano -K" ; break ;;
-			2)
-				textEditor="vi" ; break ;;
-			e)
-				exitMenu=true ; break ;;
+		read -r editorOption
+		case "$editorOption" in
+			1) textEditor="nano -K" ; break
+			   ;;
+			2) textEditor="vi" ; break
+			   ;;
+			e) exitMenu=true ; break
+			   ;;
 			*)
-				printf "\n Please choose a valid option.\n\n" ;;
+				if [ -z "$editorOption" ]
+				then exitMenu=true ; break
+				fi
+				printf "\n Please choose a valid option.\n\n"
+				;;
 		esac
 	done
 
-	if [ "$exitMenu" != "true" ]
+	if [ "$exitMenu" = "false" ]
 	then
+		cp -fp "$SCRIPT_CONF" "${SCRIPT_CONF}.bak"
 		$textEditor "$SCRIPT_CONF"
+
+		if ! diff -q "$SCRIPT_CONF" "${SCRIPT_CONF}.bak" >/dev/null 2>&1
+		then
+			configChangesMade=true
+			printf "\n ${BOLD}${MGNTct}Once you have completed all changes, please remember"
+			printf "\n to apply all YazFi settings so they can take effect.${CLRct}\n\n"
+			PressEnter
+		fi
 	fi
 	Clear_Lock
 }
@@ -3864,86 +3979,83 @@ Menu_Edit()
 ##----------------------------------------##
 Menu_GuestConfig()
 {
-	local exitMenu=false
-	local selectediface=""  changesMade=false
+	local COUNTER  exitMenu=false  isIFACE_VALID
+	local IFaceID  selectedIFACE  changesMade=false
 	local guestNAMEstr  guestSSIDstr  guestPSWDstr
     local exitRegExp="([Ee](xit)?|EXIT)"
 
 	ScriptHeader
-
 	printf "\n ${BOLD}Select a Guest Network to configure:${CLRct}\n\n"
+
 	COUNTER=1
-	for IFACE_MENU in $IFACELIST
+	for IFaceID in $IFACELIST_ORIG
 	do
 		if [ "$((COUNTER % 4))" -eq 0 ]
 		then printf "\n"
 		fi
-		IFACE_MENU_TEST="$(nvram get "${IFACE_MENU}_bss_enabled")"
-		if ! Validate_Number "" "$IFACE_MENU_TEST" silent
-		then IFACE_MENU_TEST=0
-		fi
-		if [ "$IFACE_MENU_TEST" -eq 1 ]
+		if [ "$(eval echo '$'"$(Get_Iface_Var "$IFaceID")_ENABLED")" = "true" ] && \
+		   Validate_IFACE_Enabled "$IFaceID" silent
 		then
-			printf " %s.  %s (SSID: %s)\n" "$COUNTER" "$(Get_Guest_Name "$IFACE_MENU")" "$(nvram get "${IFACE_MENU}_ssid")"
+			printf "  ${GRNct}%s${CLRct}. %s (SSID: %s)\n" "$COUNTER" "$(Menu_Get_Guest_Name "$IFaceID")" "$(nvram get "${IFaceID}_ssid")"
 		fi
 		COUNTER="$((COUNTER + 1))"
 	done
-	printf "\n e.  Exit to main menu\n"
+	printf "\n  ${GRNct}e${CLRct}. Back to main menu\n"
 
 	while true
 	do
-		selectediface=""
-		printf "\n ${BOLD}Choose an option:${CLRct}  "
-		read -r selectedguest
+		selectedIFACE=""
+		isIFACE_VALID=false
 
-		case "$selectedguest" in
-			1|2|3|4|5|6|7|8|9)
-				selectediface="$(echo "$IFACELIST" | awk -F ' ' '{print $'"$selectedguest"'}')" ;;
+		printf "\n ${BOLD}Choose an option:${CLRct}  "
+		read -r selectedGuest
+
+		case "$selectedGuest" in
+			1|2|3|4|5|6|7|8|9|10|11|12)
+				selectedIFACE="$(echo "$IFACELIST_ORIG" | awk -F ' ' '{print $'"$selectedGuest"'}')" ;;
 			e)
 				exitMenu=true ; break ;;
 			*)
 				printf "\n Please choose a valid option\n" ;;
 		esac
 
-		if [ -z "$selectediface" ]
+		if [ -z "$selectedIFACE" ]
 		then
-			echo "$selectedguest" | grep -qE "^[1-9]$" && \
+			echo "$selectedGuest" | grep -qE '^([1-9]|1[0-2])$' && \
 			printf "\n Please choose a valid option\n"
 		else
-			if ! Validate_Exists_IFACE "$selectediface" silent
+			if ! Validate_IFACE_Support "$selectedIFACE" silent
 			then
-				printf "\n Selected guest (%s) NOT supported on your router, please choose a different option\n" "$selectediface"
+				printf "\n The Guest Network [${MGNTct}%s${CLRct}] is NOT supported on this router." "$selectedIFACE"
+				printf "\n Please choose a different option.\n"
+			elif ! Validate_IFACE_Enabled "$selectedIFACE" silent
+			then
+				printf "\n The Guest Network [${MGNTct}%s${CLRct}] is NOT enabled on this router." "$selectedIFACE"
+				printf "\n Please choose a different option.\n"
 			else
-				selectediface_TEST="$(nvram get "${selectediface}_bss_enabled")"
-				if ! Validate_Number "" "$selectediface_TEST" silent
-				then selectediface_TEST=0
-				fi
-				if [ "$selectediface_TEST" -eq 1 ]
-				then
-					break
-				else
-					printf "\n Selected guest (%s) NOT enabled on your router, please choose a different option\n" "$selectediface"
-				fi
+				isIFACE_VALID=true ; break
 			fi
 		fi
 	done
 
-	if [ "$exitMenu" != "true" ]
+	if [ "$exitMenu" != "true" ] && "$isIFACE_VALID"
 	then
-		guestNAMEstr="$(Get_Guest_Name "$selectediface")"
-		guestSSIDstr="$(nvram get "${selectediface}_ssid")"
-		guestPSWDstr="$(nvram get "${selectediface}_wpa_psk")"
+		guestNAMEstr="$(Menu_Get_Guest_Name "$selectedIFACE")"
+		guestSSIDstr="$(nvram get "${selectedIFACE}_ssid")"
+		guestPSWDstr="$(nvram get "${selectedIFACE}_wpa_psk")"
 
 		while true
 		do
 			ScriptHeader
-			printf "\n ${GRNct}%s (%s)${CLRct}\n" "$guestNAMEstr" "$selectediface"
+			printf "\n ${GRNct}%s [%s]${CLRct}\n" "$guestNAMEstr" "$selectedIFACE"
 			printf "\n ${BOLD}Available options:${CLRct}\n\n"
-			printf " 1.  Set SSID (current: %s)\n" "$guestSSIDstr"
-			printf " 2.  Set passphrase (current: %s)\n\n" "$guestPSWDstr"
-			printf " e.  Go back\n"
+			printf "  ${GRNct}1${CLRct}. Set SSID (current: ${GRNct}%s${CLRct})\n" "$guestSSIDstr"
+			printf "  ${GRNct}2${CLRct}. Set passphrase (current: ${GRNct}%s${CLRct})\n\n" "$guestPSWDstr"
+			printf "  ${GRNct}e${CLRct}. Go back\n"
+
 			printf "\n ${BOLD}Choose an option:${CLRct}  "
 			read -r guestoption
+
 			case "$guestoption" in
 				1)
 					printf "\n ${BOLD}Please enter your new SSID:${CLRct}  "
@@ -3956,7 +4068,7 @@ Menu_GuestConfig()
 					then
 						newssidclean="$(echo "$newssid" | sed 's/[^a-zA-Z0-9]//g')"
 					fi
-					nvram set "${selectediface}_ssid"="$newssidclean"
+					nvram set "${selectedIFACE}_ssid"="$newssidclean"
 					nvram commit
 					changesMade=true
 				;;
@@ -3964,9 +4076,9 @@ Menu_GuestConfig()
 					while true
 					do
 						printf "\n ${BOLD}Available options:${CLRct}\n\n"
-						printf " 1.  Generate random passphrase\n"
-						printf " 2.  Manually set passphrase\n\n"
-						printf " e.  Go back\n"
+						printf "  ${GRNct}1${CLRct}. Generate random passphrase\n"
+						printf "  ${GRNct}2${CLRct}. Manually set passphrase\n\n"
+						printf "  ${GRNct}e${CLRct}. Go back\n"
 						printf "\n ${BOLD}Choose an option:${CLRct}  "
 						read -r passoption
 						case "$passoption" in
@@ -3997,7 +4109,7 @@ Menu_GuestConfig()
 								then
 									newpassphrase="$(Generate_Random_String "$validpasslength")"
 									newpassphraseclean="$(echo "$newpassphrase" | sed 's/[^a-zA-Z0-9]//g')"
-									Set_WiFi_Passphrase "$selectediface" "$newpassphraseclean"
+									Set_WiFi_Passphrase "$selectedIFACE" "$newpassphraseclean"
 									changesMade=true
 									break
 								fi
@@ -4013,7 +4125,7 @@ Menu_GuestConfig()
 								then
 									newpassphraseclean="$(echo "$newpassphrase" | sed 's/[^a-zA-Z0-9]//g')"
 								fi
-								Set_WiFi_Passphrase "$selectediface" "$newpassphraseclean"
+								Set_WiFi_Passphrase "$selectedIFACE" "$newpassphraseclean"
 								changesMade=true
 								break
 							;;
@@ -4066,90 +4178,248 @@ Menu_GuestConfig()
 ##----------------------------------------##
 Menu_QRCode()
 {
-	local exitMenu=false  selectediface=""
+	local COUNTER  exitMenu=false  validOptions
+	local IFaceID  selectedIFACE  isIFACE_VALID
 
 	ScriptHeader
-
 	printf "\n ${BOLD}Select a Guest Network for QR Code:${CLRct}\n\n"
+
 	COUNTER=1
-	for IFACE_MENU in $IFACELIST
+	validOptions=""
+
+	for IFaceID in $IFACELIST_ORIG
 	do
 		if [ "$((COUNTER % 4))" -eq 0 ]
 		then printf "\n"
 		fi
-		IFACE_MENU_TEST="$(nvram get "${IFACE_MENU}_bss_enabled")"
-		if ! Validate_Number "" "$IFACE_MENU_TEST" silent
-		then IFACE_MENU_TEST=0
-		fi
-		if [ "$IFACE_MENU_TEST" -eq 1 ]
+		if [ "$(eval echo '$'"$(Get_Iface_Var "$IFaceID")_ENABLED")" = "true" ] && \
+		   Validate_IFACE_Enabled "$IFaceID" silent
 		then
-			printf " %s.  %s (SSID: %s)\n" "$COUNTER" "$(Get_Guest_Name "$IFACE_MENU")" "$(nvram get "${IFACE_MENU}_ssid")"
+			validOptions="${validOptions:+$validOptions }$COUNTER"
+			printf "  ${GRNct}%s${CLRct}. %s (SSID: %s)\n" "$COUNTER" "$(Menu_Get_Guest_Name "$IFaceID")" "$(nvram get "${IFaceID}_ssid")"
 		fi
 		COUNTER="$((COUNTER + 1))"
 	done
-	printf "\n e.  Exit to main menu\n"
+	printf "\n  ${GRNct}e${CLRct}. Back to main menu\n"
 
 	while true
 	do
-		selectediface=""
-		printf "\n ${BOLD}Choose an option:${CLRct}  "
-		read -r selectedguest
+		selectedIFACE=""
+		isIFACE_VALID=false
 
-		case "$selectedguest" in
-			1|2|3|4|5|6|7|8|9)
-				selectediface="$(echo "$IFACELIST" | awk -F ' ' '{print $'"$selectedguest"'}')" ;;
+		printf "\n ${BOLD}Choose an option:${CLRct}  "
+		read -r selectedGuest
+
+		case "$selectedGuest" in
+			1|2|3|4|5|6|7|8|9|10|11|12)
+				selectedIFACE="$(echo "$IFACELIST_ORIG" | awk -F ' ' '{print $'"$selectedGuest"'}')" ;;
 			e)
 				exitMenu=true ; break ;;
 			*)
 				printf "\n Please choose a valid option\n" ;;
 		esac
 
-		if [ -z "$selectediface" ]
+		if [ -z "$selectedIFACE" ]
 		then
-			echo "$selectedguest" | grep -qE "^[1-9]$" && \
+			echo "$selectedGuest" | grep -qE '^([1-9]|1[0-2])$' && \
 			printf "\n Please choose a valid option\n"
 		else
-			if ! Validate_Exists_IFACE "$selectediface" silent
+			if ! Validate_IFACE_Support "$selectedIFACE" silent
 			then
-				printf "\n Selected guest (%s) NOT supported on your router, please choose a different option\n" "$selectediface"
+				printf "\n The Guest Network [${MGNTct}%s${CLRct}] is NOT supported on this router." "$selectedIFACE"
+				printf "\n Please choose a different option.\n"
+			elif ! Validate_IFACE_Enabled "$selectedIFACE" silent
+			then
+				printf "\n The Guest Network [${MGNTct}%s${CLRct}] is NOT enabled on this router." "$selectedIFACE"
+				printf "\n Please choose a different option.\n"
 			else
-				selectediface_TEST="$(nvram get "${selectediface}_bss_enabled")"
-				if ! Validate_Number "" "$selectediface_TEST" silent
-				then selectediface_TEST=0
-				fi
-				if [ "$selectediface_TEST" -eq 1 ]
-				then
-					break
-				else
-					printf "\n Selected guest (%s) NOT enabled on your router, please choose a different option\n" "$selectediface"
-				fi
+				isIFACE_VALID=true ; break
 			fi
 		fi
 	done
 
-	if [ "$exitMenu" != "true" ]
+	"$exitMenu" && return 0
+
+	if [ -x /opt/bin/opkg ] && [ -x /opt/bin/qrencode ]
 	then
-		if [ -x /opt/bin/opkg ] && [ -x /opt/bin/qrencode ]
+		printf "\n"
+		Generate_QRCode "$selectedIFACE"
+	else
+		printf "\n ${REDct}QR Code generator is NOT available${CLRct}\n"
+	fi
+	echo ; PressEnter
+}
+
+##-------------------------------------##
+## Added by Martinski W. [2026-Aug-20] ##
+##-------------------------------------##
+_TwoWayToGuest_RoutingType_()
+{
+    if [ $# -lt 2 ] || [ -z "$1" ] || [ -z "$2" ]
+    then return 1
+    fi
+	local settingValue  IFaceVar
+
+	case "$1" in
+		check)
+			settingValue="$(eval echo '$'"$(Get_Iface_Var "$2")_TWOWAYTOGUEST_MODE")"
+			echo "${settingValue:=NAT}"
+			;;
+		update)
+			IFaceVar="$(Get_Iface_Var "$2")"
+			settingValue="$(eval echo '$'"${IFaceVar}_TWOWAYTOGUEST_MODE")"
+			if [ "$settingValue" != "NAT" ]
+			then settingValue="NAT"
+			else settingValue="FILTER"
+			fi
+			sed -i "s/^${IFaceVar}_TWOWAYTOGUEST_MODE=.*/${IFaceVar}_TWOWAYTOGUEST_MODE=$settingValue/" "$SCRIPT_CONF"
+			;;
+	esac
+}
+
+##-------------------------------------##
+## Added by Martinski W. [2026-Aug-20] ##
+##-------------------------------------##
+_Check_TwoWayToGuest_Enabled_()
+{
+	local IFaceID  IFaceVar  isOptionEnabled=false
+	for IFaceID in $IFACELIST
+	do
+		IFaceVar="$(Get_Iface_Var "$IFaceID")"
+		if [ "$(eval echo '$'"${IFaceVar}_ENABLED")" = "true" ] && \
+		   [ "$(eval echo '$'"${IFaceVar}_TWOWAYTOGUEST")" = "true" ] && \
+		   Validate_IFACE_Enabled "$IFaceID" silent
 		then
-			printf "\n"
-			Generate_QRCode "${selectediface}"
-		else
-			printf "\n ${REDct}QR Code generator is NOT available${CLRct}\n"
+			isOptionEnabled=true
+			break
 		fi
+	done
+	"$isOptionEnabled" && return 0 || return 1
+}
+
+##-------------------------------------##
+## Added by Martinski W. [2026-Aug-20] ##
+##-------------------------------------##
+_Menu_TwoWayToGuest_RoutingType_()
+{
+	local counter  exitMenu=false
+	local TwoWayToGuestModeStr  validOptions
+	local IFaceID  IFaceVar  selectedIFACE  isIFACE_VALID
+
+	ScriptHeader
+	printf "\n ${BOLD}Set the Guest Network Two-Way Routing Type:${CLRct}\n\n"
+
+	counter=1
+	validOptions=""
+	. "$SCRIPT_CONF"
+
+	for IFaceID in $IFACELIST_ORIG
+	do
+		if [ "$((counter % 4))" -eq 0 ]
+		then printf "\n"
+		fi
+		IFaceVar="$(Get_Iface_Var "$IFaceID")"
+		if [ "$(eval echo '$'"${IFaceVar}_ENABLED")" = "true" ] && \
+		   [ "$(eval echo '$'"${IFaceVar}_TWOWAYTOGUEST")" = "true" ] && \
+		   Validate_IFACE_Enabled "$IFaceID" silent
+		then
+			validOptions="${validOptions:+$validOptions }$counter"
+			if [ "$(_TwoWayToGuest_RoutingType_ check "$IFaceID")" = "NAT" ]
+			then TwoWayToGuestModeStr="NAT PostRouting"
+			else TwoWayToGuestModeStr="FILTER Forward"
+			fi
+			printf "  ${GRNct}%s${CLRct}. %s (SSID: %s)\n" "$counter" "$(Menu_Get_Guest_Name "$IFaceID")" "$(nvram get "${IFaceID}_ssid")"
+			printf "     [Currently: ${GRNct}%s${CLRct}]\n" "$TwoWayToGuestModeStr"
+        
+        fi
+		counter="$((counter + 1))"
+	done
+	printf "\n  ${GRNct}e${CLRct}. Back to main menu\n"
+
+	while true
+	do
+		selectedIFACE=""
+		isIFACE_VALID=false
+
+		printf "\n ${BOLD}Choose an option:${CLRct}  "
+		read -r selectedGuest
+
+		case "$selectedGuest" in
+			1|2|3|4|5|6|7|8|9|10|11|12)
+				selectedIFACE="$(echo "$IFACELIST_ORIG" | awk -F ' ' '{print $'"$selectedGuest"'}')" ;;
+			e)
+				exitMenu=true ; break ;;
+			*)
+				printf "\n Please choose a valid option\n" ;;
+		esac
+
+		if [ -z "$selectedIFACE" ]
+		then
+			echo "$selectedGuest" | grep -qE '^([1-9]|1[0-2])$' && \
+			printf "\n Please choose a valid option\n"
+		else
+			if ! Validate_IFACE_Support "$selectedIFACE" silent
+			then
+				printf "\n The Guest Network [${MGNTct}%s${CLRct}] is NOT supported on this router." "$selectedIFACE"
+				printf "\n Please choose a different option.\n"
+			elif ! Validate_IFACE_Enabled "$selectedIFACE" silent
+			then
+				printf "\n The Guest Network [${MGNTct}%s${CLRct}] is NOT enabled on this router." "$selectedIFACE"
+				printf "\n Please choose a different option.\n"
+			elif ! echo "$validOptions" | grep -qw "$selectedGuest"
+			then
+				printf "\n The Guest Network [${MGNTct}%s${CLRct}] has Two-Way-to-Guest option DISABLED." "$selectedIFACE"
+				printf "\n Please choose a different option.\n"
+			else
+				isIFACE_VALID=true
+			fi
+		fi
+        break
+	done
+
+	if "$exitMenu"
+	then
+		"$configChangesMade" && \
+		{
+		   printf "\n ${BOLD}${MGNTct}Once you have completed all changes, please remember"
+		   printf "\n to apply all YazFi settings so they can take effect.${CLRct}\n\n"
+		   PressEnter
+		}
+		return 0
+	fi
+
+	if "$isIFACE_VALID"
+	then
+		configChangesMade=true
+		_TwoWayToGuest_RoutingType_ update "$selectedIFACE"
+	else
 		echo ; PressEnter
+	fi
+	_Menu_TwoWayToGuest_RoutingType_
+}
+
+##-------------------------------------##
+## Added by Martinski W. [2026-Aug-20] ##
+##-------------------------------------##
+_ConnectedClientsCheckRunning_()
+{
+	local procCount="$(top -bn1 | grep -cE "/jffs/scripts[/]$SCRIPT_NAME service_event start YazFiconnectedclients")"
+	if [ "$procCount" -gt 6 ]
+	then return 0
+	else return 1
 	fi
 }
 
+## This function suggested by @HuskyHerder, code inspired by @ColinTaylor's wireless monitor script ##
 ##----------------------------------------##
 ## Modified by Martinski W. [2024-Jan-03] ##
 ##----------------------------------------##
 Menu_Status()
 {
 	renice 15 $$
-	### This function suggested by @HuskyHerder, code inspired by @ColinTaylor's wireless monitor script ###
 	STATUSOUTPUTFILE="$SCRIPT_DIR/.connectedclients"
-	rm -f "$STATUSOUTPUTFILE"
-	TMPSTATUSOUTPUTFILE="/tmp/.connectedclients"
+	TMPSTATUSOUTPUTFILE="/tmp/YazFi_$$.connectedclients"
+	printf '' > "$STATUSOUTPUTFILE"
 	. "$SCRIPT_CONF"
 
 	if [ -x /opt/bin/opkg ] && [ ! -s /opt/bin/dig ]
@@ -4161,10 +4431,12 @@ Menu_Status()
 	local NoARGs=false
 	if [ $# -eq 0 ] || [ -z "$1" ] ; then NoARGs=true ; fi
 
-	"$NoARGs" && ScriptHeader
-	"$NoARGs" && printf "${BOLD}$PASS%sQuerying router for connected WiFi clients...${CLEARFORMAT}\n\n" ""
-
-	printf "INTERFACE,HOSTNAME,IP,MAC,CONNECTED,RX,TX,RSSI,PHY\n" >> "$TMPSTATUSOUTPUTFILE"
+	"$NoARGs" && \
+	{
+	   ScriptHeader
+	   printf " ${BOLD}${PASS}Querying router for connected WiFi clients...${CLRct}\n\n"
+	}
+	printf "INTERFACE,HOSTNAME,IP,MAC,CONNECTED,RX,TX,RSSI,PHY\n" > "$TMPSTATUSOUTPUTFILE"
 
 	##----------------------------------------##
 	## Modified by Martinski W. [2023-Dec-06] ##
@@ -4176,22 +4448,22 @@ Menu_Status()
 	for IFACE in $IFACELIST
 	do
 		if [ "$(eval echo '$'"$(Get_Iface_Var "$IFACE")_ENABLED")" = "true" ] && \
-		   Validate_Exists_IFACE "$IFACE" silent && \
-		   Validate_Enabled_IFACE "$IFACE" silent
+		   Validate_IFACE_Enabled "$IFACE" silent
 		then
 			"$NoARGs" && \
 			{
-			  printf "%114s\n\n" "" | tr " " "_"
-			  printf "${BOLD}INTERFACE: %-5s${CLEARFORMAT}\n" "$IFACE"
-			  printf "${BOLD}SSID: %-20s${CLEARFORMAT}\n\n" "$(nvram get "${IFACE}_ssid")"
+			   printf "%114s\n\n" ' ' | tr ' ' '_'
+			   printf "   ${BOLD}SSID: ${GRNct}%s${CLRct}\n" "$(nvram get "${IFACE}_ssid")"
+			   printf "   ${BOLD}NETWORK: ${GRNct}%s${CLRct}\n" "$(Menu_Get_Guest_Name "$IFACE")"
+			   printf "   ${BOLD}INTERFACE: ${GRNct}%s${CLRct}\n\n" "$IFACE"
 			}
 			IFACE_MACS="$(wl -i "$IFACE" assoclist)"
 			if [ "$IFACE_MACS" != "" ]
 			then
 				"$NoARGs" && \
 				{
-				  printf "${BOLD}%-32s%-18s%-20s%-15s%-15s%-10s%-5s${CLEARFORMAT}\n" "HOSTNAME" "IP" "MAC" "CONNECTED" "RX/TX" "RSSI" "PHY"
-				  printf "${BOLD}%-32s%-18s%-20s%-15s%-15s%-10s%-5s${CLEARFORMAT}\n" \
+				  printf "${BOLD}%-32s%-18s%-20s%-15s%-15s%-10s%-5s${CLRct}\n" "HOSTNAME" "IP" "MAC" "CONNECTED" "RX/TX" "RSSI" "PHY"
+				  printf "${BOLD}%-32s%-18s%-20s%-15s%-15s%-10s%-5s${CLRct}\n" \
 				  "------------------------------" "---------------" "-----------------" "-------------" "-------------" "--------" "----"
 				}
 				IFS=$'\n'
@@ -4288,21 +4560,25 @@ Menu_Status()
 						GUEST_PHY="Unknown"
 					fi
 
-					"$NoARGs" && printf "%-32s%-18s%-20s%-15s%-15s%-11s%-6s${CLEARFORMAT}\n" "$GUEST_HOST" "$GUEST_IPADDR" "$GUEST_MACADDR" "$GUEST_TIMECONNECTED_PRINT" "$GUEST_RX/$GUEST_TX Mbps" "$GUEST_RSSI dBm" "$GUEST_PHY"
+					"$NoARGs" && printf "%-32s%-18s%-20s%-15s%-15s%-11s%-6s${CLRct}\n" "$GUEST_HOST" "$GUEST_IPADDR" "$GUEST_MACADDR" "$GUEST_TIMECONNECTED_PRINT" "$GUEST_RX/$GUEST_TX Mbps" "$GUEST_RSSI dBm" "$GUEST_PHY"
 
 					printf "%s,%s,%s,%s,%s,%s,%s,%s,%s\n" "$IFACE" "$GUEST_HOST" "$GUEST_IPADDR" "$GUEST_MACADDR" "$GUEST_TIMECONNECTED" "$GUEST_RX" "$GUEST_TX" "$GUEST_RSSI" "$GUEST_PHY" >> "$TMPSTATUSOUTPUTFILE"
 				done
 				unset IFS
 			else
-				"$NoARGs" && printf "${BOLD}${WARN}No clients connected${CLEARFORMAT}\n\n"
+				"$NoARGs" && printf "   ${BOLD}${WARN}No clients connected${CLRct}\n"
 				printf "%s,,NOCLIENTS,,,,,,\n" "$IFACE" >> "$TMPSTATUSOUTPUTFILE"
 			fi
 		fi
 	done
 
-	mv "$TMPSTATUSOUTPUTFILE" "$STATUSOUTPUTFILE" 2>/dev/null
-	"$NoARGs" && printf "%114s\n\n" "" | tr " " "_"
-	"$NoARGs" && printf "${BOLD}$PASS%sQuery complete, please see above for results${CLEARFORMAT}\n\n" ""
+	cp -fp "$TMPSTATUSOUTPUTFILE" "$STATUSOUTPUTFILE" 2>/dev/null
+	rm -f "$TMPSTATUSOUTPUTFILE"
+	"$NoARGs" && \
+	{
+	   printf "%114s\n\n" ' ' | tr ' ' '_'
+	   printf "${BOLD}${PASS} Query complete, please see above for results${CLRct}\n\n"
+	}
 	#######################################################################################################
 	renice 0 $$
 }
@@ -4534,9 +4810,9 @@ then SCRIPT_VERS_INFO=""
 else SCRIPT_VERS_INFO="[$versionDev_TAG]"
 fi
 
-##------------------------------------------##
-## Modified by ExtremeFiretop [2026-Jul-02] ##
-##------------------------------------------##
+##----------------------------------------##
+## Modified by Martinski W. [2026-Aug-20] ##
+##----------------------------------------##
 if [ $# -eq 0 ] || [ -z "$1" ]
 then
 	if ! _Firmware_Support_Check_
@@ -4554,6 +4830,7 @@ then
 
 	Create_Dirs
 	Create_Symlinks
+	Conf_Exists
 	Auto_Startup create 2>/dev/null
 	Auto_Cron create 2>/dev/null
 	Auto_DNSMASQ create 2>/dev/null
@@ -4565,7 +4842,6 @@ then
 	Shortcut_Script create
 	_CheckFor_WebGUI_Page_
 	NetworkMap_Apply
-	ScriptHeader
 	MainMenu
 	exit 0
 fi
@@ -4599,7 +4875,6 @@ case "$1" in
 				service restart_dnsmasq
 			fi
 		fi
-
 		if ! Conf_Exists; then
 			exit 1
 		fi
@@ -4629,7 +4904,7 @@ case "$1" in
 		for IFACE in $IFACELIST
 		do
 			if [ "$(eval echo '$'"$(Get_Iface_Var "$IFACE")_ENABLED")" = "true" ] && \
-			   Validate_Enabled_IFACE "$IFACE" silent
+			   Validate_IFACE_Enabled "$IFACE" silent
 			then
 				if [ "$(nvram get "${IFACE}_lanaccess")" != "on" ]
 				then
@@ -4658,7 +4933,6 @@ case "$1" in
 			Print_Output true "$SCRIPT_NAME is restarting wireless services now." "$WARN"
 			service restart_wireless >/dev/null 2>&1
 		fi
-
 		exit 0
 	;;
 	bounceclients)
@@ -4692,11 +4966,10 @@ case "$1" in
 			exit 0
 		elif [ "$2" = "start" ] && [ "$3" = "${SCRIPT_NAME}connectedclients" ]
 		then
-			STATUSOUTPUTFILE="$SCRIPT_DIR/.connectedclients"
-			rm -f "$STATUSOUTPUTFILE"
 			sleep 2
-			Menu_Status outputtofile
-			exit 0
+			if ! _ConnectedClientsCheckRunning_
+			then Menu_Status outputtofile
+			fi
 		fi
 		exit 0
 	;;
@@ -4709,17 +4982,15 @@ case "$1" in
 			if ! Conf_Exists; then
 				return 1
 			fi
-
 			if ! Conf_Validate; then
 				return 1
 			fi
-
 			. $SCRIPT_CONF
 
 			for IFACE in $IFACELIST
 			do
 				if [ "$(eval echo '$'"$(Get_Iface_Var "$IFACE")_ENABLED")" = "true" ] && \
-				   Validate_Enabled_IFACE "$IFACE" silent
+				   Validate_IFACE_Enabled "$IFACE" silent
 				then
 					Routing_RPDB create "$IFACE" 2>/dev/null
 				fi
