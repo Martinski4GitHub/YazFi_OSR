@@ -1,6 +1,6 @@
-/**----------------------------------------**/
-/** Modified by Martinski W. [2024-Aug-19] **/
-/**----------------------------------------**/
+/**----------------------------**/
+/** Last Modified: 2026-Aug-20 **/
+/**----------------------------**/
 var clientswl01 = []; var sortnamewl01 = 'Hostname'; var sortdirwl01 = 'asc';
 var clientswl02 = []; var sortnamewl02 = 'Hostname'; var sortdirwl02 = 'asc';
 var clientdwl03 = []; var sortnamewl03 = 'Hostname'; var sortdirwl03 = 'asc';
@@ -14,7 +14,7 @@ var clientswl31 = []; var sortnamewl31 = 'Hostname'; var sortdirwl31 = 'asc';
 var clientswl32 = []; var sortnamewl32 = 'Hostname'; var sortdirwl32 = 'asc';
 var clientswl33 = []; var sortnamewl33 = 'Hostname'; var sortdirwl33 = 'asc';
 
-var tout;
+var tmout = null;
 var numOfBands = 0;
 var failedfields = [];
 
@@ -145,7 +145,7 @@ const theDHCPEnd=
 /** Modified by Martinski W. [2024-Jul-21] **/
 /**----------------------------------------**/
 const listOfGUIFieldNames=
-[ 'enabled', 'ipaddr', theDHCPStart.varName, theDHCPEnd.varName, theDHCPLeaseTime.varName, 'dns1', 'dns2', 'vpnclientnumber', 'allowinternet', 'forcedns', 'redirectalltovpn', 'onewaytoguest', 'twowaytoguest', 'clientisolation' ];
+[ 'enabled', 'ipaddr', theDHCPStart.varName, theDHCPEnd.varName, theDHCPLeaseTime.varName, 'dns1', 'dns2', 'forcedns', 'allowinternet', 'redirectalltovpn', 'vpnclientnumber', 'onewaytoguest', 'twowaytoguest', 'clientisolation' ];
 
 const band_24GHz='24G';
 const band_5GHz_1='5G_1';
@@ -319,48 +319,52 @@ function AddFailedField (formInput, errorMsg)
    return true;
 }
 
-function initial(){
+function initial()
+{
 	SetCurrentPage();
 	LoadCustomSettings();
 	show_menu();
 	get_conf_file();
 	ScriptUpdateLayout();
 
-	document.formScriptActions.action_script.value='start_YazFiconnectedclients';
+	document.formScriptActions.action_script.value = 'start_YazFiconnectedclients';
 	document.formScriptActions.submit();
-	tout = setTimeout(get_connected_clients_file,5000);
+	tmout = setTimeout(get_connected_clients_file,5000);
 }
 
 /**----------------------------------------**/
 /** Modified by Martinski W. [2022-Dec-05] **/
 /**----------------------------------------**/
-function YazHint(hintid){
+function YazHint(hintid)
+{
 	var tag_name= document.getElementsByTagName('a');
-	for(var i=0;i<tag_name.length;i++){
+	for (var i=0;i<tag_name.length;i++)
+	{
 		tag_name[i].onmouseout=nd;
 	}
 	hinttext='My text goes here';
-	if(hintid == 1) hinttext='Enable YazFi for this Guest Network';
-	if(hintid == 2) hinttext='IP address/subnet to use for Guest Network';
-	if(hintid == 3) hinttext=theDHCPStart.hintMsg();
-	if(hintid == 4) hinttext=theDHCPEnd.hintMsg();
-	if(hintid == 5) hinttext=theDHCPLeaseTime.hintMsg();
-	if(hintid == 6) hinttext='IP address for primary DNS resolver';
-	if(hintid == 7) hinttext='IP address for secondary DNS resolver';
-	if(hintid == 8) hinttext='Should Guest Network DNS requests be forced/redirected to DNS1? N.B. This setting is ignored if sending to VPN, and VPN Client\'s DNS configuration is Exclusive';
-	if(hintid == 9) hinttext='Should Guest Network be allowed to access the internet?';
-	if(hintid == 10) hinttext='Should Guest Network traffic be sent via VPN?';
-	if(hintid == 11) hinttext='The number of the VPN Client to send traffic through (1-5)';
-	if(hintid == 12) hinttext='Should LAN/Guest Network traffic have unrestricted access to each other? Cannot be enabled if _ONEWAYTOGUEST is enabled';
-	if(hintid == 13) hinttext='Should LAN be able to initiate connections to Guest Network clients (but not the opposite)? Cannot be enabled if _TWOWAYTOGUEST is enabled';
-	if(hintid == 14) hinttext='Should Guest Network radio prevent clients from talking to each other?';
+	if (hintid == 1) hinttext='Enable YazFi for this Guest Network';
+	if (hintid == 2) hinttext='IP address/subnet to use for Guest Network';
+	if (hintid == 3) hinttext=theDHCPStart.hintMsg();
+	if (hintid == 4) hinttext=theDHCPEnd.hintMsg();
+	if (hintid == 5) hinttext=theDHCPLeaseTime.hintMsg();
+	if (hintid == 6) hinttext='IP address for primary DNS resolver';
+	if (hintid == 7) hinttext='IP address for secondary DNS resolver';
+	if (hintid == 8) hinttext='Should Guest Network DNS requests be forced/redirected to DNS1? N.B. This setting is ignored if sending to VPN, and VPN Client\'s DNS configuration is Exclusive';
+	if (hintid == 9) hinttext='Should Guest Network be allowed to access the internet?';
+	if (hintid == 10) hinttext='Should Guest Network traffic be sent via VPN?';
+	if (hintid == 11) hinttext='The number of the VPN Client to send traffic through (1-5)';
+	if (hintid == 12) hinttext='Should LAN/Guest Network traffic have unrestricted access to each other? Cannot be enabled if _ONEWAYTOGUEST is enabled';
+	if (hintid == 13) hinttext='Should LAN be able to initiate connections to Guest Network clients (but not the opposite)? Cannot be enabled if _TWOWAYTOGUEST is enabled';
+	if (hintid == 14) hinttext='Should Guest Network radio prevent clients from talking to each other?';
 	return overlib(hinttext,0,0);
 }
 
 /**----------------------------------------**/
 /** Modified by Martinski W. [2022-Dec-05] **/
 /**----------------------------------------**/
-function OptionsEnableDisable(forminput){
+function OptionsEnableDisable(forminput)
+{
 	var inputname = forminput.name;
 	var inputvalue = forminput.value;
 	var prefix = inputname.substring(0,inputname.lastIndexOf('_'));
@@ -368,36 +372,42 @@ function OptionsEnableDisable(forminput){
 	var fieldnames = ['ipaddr',theDHCPStart.varName,theDHCPEnd.varName,theDHCPLeaseTime.varName,'dns1','dns2','vpnclientnumber'];
 	var fieldnames2 = ['allowinternet','forcedns','redirectalltovpn','onewaytoguest','twowaytoguest','clientisolation'];
 
-	if(inputvalue == 'false'){
-		for(var index = 0; index < fieldnames.length; index++){
+	if (inputvalue == 'false')
+	{
+		for (var index = 0; index < fieldnames.length; index++)
+		{
 			$('input[name='+prefix+'_'+fieldnames[index]+']').addClass('disabled');
 			$('input[name='+prefix+'_'+fieldnames[index]+']').prop('disabled',true);
 		}
-		for(var index = 0; index < fieldnames2.length; index++){
+		for (var index = 0; index < fieldnames2.length; index++)
+		{
 			$('input[name='+prefix+'_'+fieldnames2[index]+']').prop('disabled',true);
 		}
 	}
-	else if(inputvalue == 'true'){
-		for(var index = 0; index < fieldnames.length; index++){
-			if(fieldnames2[index] == 'dns2' || fieldnames2[index] == 'vpnclientnumber'){continue;}
+	else if (inputvalue == 'true')
+	{
+		for (var index = 0; index < fieldnames.length; index++)
+		{
+			if (fieldnames2[index] == 'dns2' || fieldnames2[index] == 'vpnclientnumber') {continue;}
 			$('input[name='+prefix+'_'+fieldnames[index]+']').removeClass('disabled');
 			$('input[name='+prefix+'_'+fieldnames[index]+']').prop('disabled',false);
 		}
-		for(var index = 0; index < fieldnames2.length; index++){
+		for (var index = 0; index < fieldnames2.length; index++)
+		{
 			$('input[name='+prefix+'_'+fieldnames2[index]+']').prop('disabled',false);
 		}
-
-		if(eval('document.form.'+prefix+'_redirectalltovpn').value == 'true'){
+		if (eval('document.form.'+prefix+'_redirectalltovpn').value == 'true')
+		{
 			$('input[name='+prefix+'_vpnclientnumber]').removeClass('disabled');
 			$('input[name='+prefix+'_vpnclientnumber]').prop('disabled',false);
 		}
-
-		if(eval('document.form.'+prefix+'_forcedns').value == 'false'){
+		if (eval('document.form.'+prefix+'_forcedns').value == 'false')
+		{
 			$('input[name='+prefix+'_dns2]').removeClass('disabled');
 			$('input[name='+prefix+'_dns2]').prop('disabled',false);
 		}
-
-		if(eval('document.form.'+prefix+'_allowinternet').value == 'false'){
+		if (eval('document.form.'+prefix+'_allowinternet').value == 'false')
+		{
 			$('input[name='+prefix+'_redirectalltovpn]').addClass('disabled');
 			$('input[name='+prefix+'_redirectalltovpn]').prop('disabled',true);
 			$('input[name='+prefix+'_vpnclientnumber]').addClass('disabled');
@@ -408,22 +418,28 @@ function OptionsEnableDisable(forminput){
 	}
 }
 
-function SubOptionsEnableDisable(forminput,optiontype){
+function SubOptionsEnableDisable(forminput,optiontype)
+{
 	var inputname = forminput.name;
 	var inputvalue = forminput.value;
 	var prefix = inputname.substring(0,inputname.lastIndexOf('_'));
 
-	if(eval('document.form.'+prefix+'_enabled').value == 'true'){
-		if(inputvalue == 'false'){
-			if(optiontype == 'vpn'){
+	if (eval('document.form.'+prefix+'_enabled').value == 'true')
+	{
+		if (inputvalue == 'false')
+		{
+			if (optiontype == 'vpn')
+			{
 				$('input[name='+prefix+'_vpnclientnumber]').addClass('disabled');
 				$('input[name='+prefix+'_vpnclientnumber]').prop('disabled',true);
 			}
-			else if(optiontype == 'dns'){
+			else if (optiontype == 'dns')
+			{
 				$('input[name='+prefix+'_dns2]').removeClass('disabled');
 				$('input[name='+prefix+'_dns2]').prop('disabled',false);
 			}
-			else if(optiontype == 'allowinternet'){
+			else if (optiontype == 'allowinternet')
+			{
 				$('input[name='+prefix+'_redirectalltovpn]').addClass('disabled');
 				$('input[name='+prefix+'_redirectalltovpn]').prop('disabled',true);
 				$('input[name='+prefix+'_vpnclientnumber]').addClass('disabled');
@@ -432,17 +448,21 @@ function SubOptionsEnableDisable(forminput,optiontype){
 				Validate_IP(eval('document.form.'+prefix+'_dns2'),'DNS');
 			}
 		}
-		else if(inputvalue == 'true'){
-			if(optiontype == 'vpn'){
+		else if (inputvalue == 'true')
+		{
+			if (optiontype == 'vpn')
+			{
 				$('input[name='+prefix+'_vpnclientnumber]').removeClass('disabled');
 				$('input[name='+prefix+'_vpnclientnumber]').prop('disabled',false);
 			}
-			else if(optiontype == 'dns'){
+			else if (optiontype == 'dns')
+			{
 				$('input[name='+prefix+'_dns2]').val($('input[name='+prefix+'_dns1]').val());
 				$('input[name='+prefix+'_dns2]').addClass('disabled');
 				$('input[name='+prefix+'_dns2]').prop('disabled',true);
 			}
-			else if(optiontype == 'allowinternet'){
+			else if (optiontype == 'allowinternet')
+			{
 				$('input[name='+prefix+'_redirectalltovpn]').removeClass('disabled');
 				$('input[name='+prefix+'_redirectalltovpn]').prop('disabled',false);
 				$('input[name='+prefix+'_vpnclientnumber]').removeClass('disabled');
@@ -457,33 +477,45 @@ function SubOptionsEnableDisable(forminput,optiontype){
 /**----------------------------------------**/
 /** Modified by Martinski W. [2023-Jan-29] **/
 /**----------------------------------------**/
-function Validate_IP(forminput,iptype){
+function Validate_IP(forminput,iptype)
+{
 	var inputvalue = forminput.value;
 	var inputname = forminput.name;
 	let errorMsg;
 	var prefix = inputname.substring(0,inputname.lastIndexOf('_'));
-	if(iptype == 'DNS'){
-		if(inputvalue.substring(inputvalue.lastIndexOf('.')) == '.0'){
+	if (iptype == 'DNS')
+	{
+		if (inputvalue.substring(inputvalue.lastIndexOf('.')) == '.0')
+		{
 			forminput.value = inputvalue.substring(0,inputvalue.lastIndexOf('.'))+'.1';
 		}
 	}
-	if(/^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(inputvalue)){
-		if(iptype != 'DNS'){
+	if (/^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(inputvalue))
+	{
+		if (iptype != 'DNS')
+		{
 			var fixedip = inputvalue.substring(0,inputvalue.lastIndexOf('.'))+'.0';
 			$(forminput).val(fixedip);
-			if (/(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^192\.168\.)/.test(fixedip)){
-				if(! jy_checkIPConflict('LAN',fixedip,'255.255.255.0',document.form.lan_ipaddr.value,document.form.lan_netmask.value).state){
+			if (/(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^192\.168\.)/.test(fixedip))
+			{
+				if (! jy_checkIPConflict('LAN',fixedip,'255.255.255.0',document.form.lan_ipaddr.value,document.form.lan_netmask.value).state)
+				{
 					matchfound=false;
-					for(var i = 0; i < numOfBands; i++){
-						for(var i2 = 1; i2 <= theGuestNet.numOfGNsPerBand; i2++){
-							if('yazfi_wl'+i.toString()+i2.toString()+'_ipaddr' != inputname){
-								if(eval('document.form.yazfi_wl'+i.toString()+i2.toString()+'_ipaddr.value') == fixedip){
+					for (var i = 0; i < numOfBands; i++)
+					{
+						for (var i2 = 1; i2 <= theGuestNet.numOfGNsPerBand; i2++)
+						{
+							if ('yazfi_wl'+i.toString()+i2.toString()+'_ipaddr' != inputname)
+							{
+								if (eval('document.form.yazfi_wl'+i.toString()+i2.toString()+'_ipaddr.value') == fixedip)
+								{
 									matchfound=true;
 								}
 							}
 						}
 					}
-					if(matchfound){
+					if (matchfound)
+					{
 						errorMsg='Conflict with another YazFi network';
 						$(forminput).addClass('invalid');
 						if (AddFailedField (forminput, errorMsg)) { forminput.focus(); }
@@ -491,13 +523,15 @@ function Validate_IP(forminput,iptype){
 						$(forminput)[0].onmouseout = nd;
 						return false;
 					}
-					else{
+					else
+					{
 						$(forminput).removeClass('invalid');
 						$(forminput).off('mouseover');
 						return true;
 					}
 				}
-				else{
+				else
+				{
 					errorMsg='LAN IP conflict';
 					$(forminput).addClass('invalid');
 					if (AddFailedField (forminput, errorMsg)) { forminput.focus(); }
@@ -506,7 +540,8 @@ function Validate_IP(forminput,iptype){
 					return false;
 				}
 			}
-			else{
+			else
+			{
 				errorMsg='Not a private IP address';
 				$(forminput).addClass('invalid');
 				if (AddFailedField (forminput, errorMsg)) { forminput.focus(); }
@@ -515,7 +550,10 @@ function Validate_IP(forminput,iptype){
 				return false;
 			}
 		}
-		else if (iptype == 'DNS' && ! /(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^192\.168\.)/.test(inputvalue) && eval('document.form.'+prefix+'_allowinternet.value') == 'false'){
+		else if (iptype == 'DNS' &&
+		         ! /(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^192\.168\.)/.test(inputvalue) &&
+		         eval('document.form.'+prefix+'_allowinternet.value') == 'false')
+		{
 			errorMsg='Allow internet disabled and non-private IP address used';
 			$(forminput).addClass('invalid');
 			if (AddFailedField (forminput, errorMsg)) { forminput.focus(); }
@@ -523,13 +561,15 @@ function Validate_IP(forminput,iptype){
 			$(forminput)[0].onmouseout = nd;
 			return false;
 		}
-		else{
+		else
+		{
 			$(forminput).removeClass('invalid');
 			$(forminput).off('mouseover');
 			return true;
 		}
 	}
-	else{
+	else
+	{
 		errorMsg='Invalid IP Address';
 		$(forminput).addClass('invalid');
 		if (AddFailedField (forminput, errorMsg)) { forminput.focus(); }
@@ -542,65 +582,79 @@ function Validate_IP(forminput,iptype){
 /**----------------------------------------**/
 /** Modified by Martinski W. [2023-Jan-29] **/
 /**----------------------------------------**/
-function Validate_DHCP(forminput,dhcpType){
+function Validate_DHCP(forminput,dhcpType)
+{
 	var inputname = forminput.name;
 	var inputvalue = forminput.value*1;
 
-	if(dhcpType == theDHCPStart.varType){
-		if(inputvalue >= eval('document.form.'+inputname.substring(0,inputname.indexOf('start'))+'end.value')*1){
+	if (dhcpType == theDHCPStart.varType)
+	{
+		if (inputvalue >= eval('document.form.'+inputname.substring(0,inputname.indexOf('start'))+'end.value')*1)
+		{
 			$(forminput).addClass('invalid');
 			if (AddFailedField (forminput, theDHCPStart.errorMsg1)) { forminput.focus(); }
 			$(forminput).on('mouseover',function(){return overlib(theDHCPStart.errorMsg1,0,0);});
 			$(forminput)[0].onmouseout = nd;
 			return false;
 		}
-		else{
-			if(inputvalue > theDHCPStart.maxVal || inputvalue < theDHCPStart.minVal){
+		else
+		{
+			if (inputvalue > theDHCPStart.maxVal || inputvalue < theDHCPStart.minVal)
+			{
 				$(forminput).addClass('invalid');
 				if (AddFailedField (forminput, theDHCPStart.errorMsg2())) { forminput.focus(); }
 				$(forminput).on('mouseover',function(){return overlib(theDHCPStart.errorMsg2(),0,0);});
 				$(forminput)[0].onmouseout = nd;
 				return false;
 			}
-			else{
+			else
+			{
 				$(forminput).removeClass('invalid');
 				$(forminput).off('mouseover');
 				return true;
 			}
 		}
 	}
-	else if(dhcpType == theDHCPEnd.varType){
-		if(inputvalue <= eval('document.form.'+inputname.substring(0,inputname.indexOf('end'))+'start.value')*1){
+	else if (dhcpType == theDHCPEnd.varType)
+	{
+		if (inputvalue <= eval('document.form.'+inputname.substring(0,inputname.indexOf('end'))+'start.value')*1)
+		{
 			$(forminput).addClass('invalid');
 			if (AddFailedField (forminput, theDHCPEnd.errorMsg1)) { forminput.focus(); }
 			$(forminput).on('mouseover',function(){return overlib(theDHCPEnd.errorMsg1,0,0);});
 			$(forminput)[0].onmouseout = nd;
 			return false;
 		}
-		else{
-			if(inputvalue > theDHCPEnd.maxVal || inputvalue < theDHCPEnd.minVal){
+		else
+		{
+			if (inputvalue > theDHCPEnd.maxVal || inputvalue < theDHCPEnd.minVal)
+			{
 				$(forminput).addClass('invalid');
 				if (AddFailedField (forminput, theDHCPEnd.errorMsg2())) { forminput.focus(); }
 				$(forminput).on('mouseover',function(){return overlib(theDHCPEnd.errorMsg2(),0,0);});
 				$(forminput)[0].onmouseout = nd;
 				return false;
 			}
-			else{
+			else
+			{
 				$(forminput).removeClass('invalid');
 				$(forminput).off('mouseover');
 				return true;
 			}
 		}
 	}
-	else if(dhcpType == theDHCPLeaseTime.varType){
-		if (!theDHCPLeaseTime.ValidateLeaseValue (forminput.value)){
+	else if (dhcpType == theDHCPLeaseTime.varType)
+	{
+		if (!theDHCPLeaseTime.ValidateLeaseValue (forminput.value))
+		{
 			$(forminput).addClass('invalid');
 			if (AddFailedField (forminput, theDHCPLeaseTime.errorMsg())) { forminput.focus(); }
 			$(forminput).on('mouseover',function(){return overlib(theDHCPLeaseTime.errorMsg(),0,0);});
 			$(forminput)[0].onmouseout = nd;
 			return false;
 		}
-		else{
+		else
+		{
 			$(forminput).removeClass('invalid');
 			$(forminput).off('mouseover');
 			return true;
@@ -611,38 +665,46 @@ function Validate_DHCP(forminput,dhcpType){
 /**----------------------------------------**/
 /** Modified by Martinski W. [2023-Jan-29] **/
 /**----------------------------------------**/
-function Validate_VPNClientNo(forminput){
+function Validate_VPNClientNo(forminput)
+{
 	var inputname = forminput.name;
 	var inputvalue = forminput.value*1;
 	const errorMsg='Value not between 1 and 5';
 
-	if(inputvalue > 5 || inputvalue < 1){
+	if (inputvalue > 5 || inputvalue < 1)
+	{
 		$(forminput).addClass('invalid');
 		if (AddFailedField (forminput, errorMsg)) { forminput.focus(); }
 		$(forminput).on('mouseover',function(){return overlib(errorMsg,0,0);});
 		$(forminput)[0].onmouseout = nd;
 		return false;
 	}
-	else{
+	else
+	{
 		$(forminput).removeClass('invalid');
 		$(forminput).off('mouseover');
 		return true;
 	}
 }
 
-function Validate_OneTwoWay(forminput){
+function Validate_OneTwoWay(forminput)
+{
 	var onetwo = '';
 	var inputname = forminput.name;
 	var inputvalue = forminput.value;
 
 	(inputname.indexOf('oneway') != -1) ? onetwo = 'one' : onetwo = 'two';
-	if(onetwo == 'one'){
-		if(inputvalue == 'true'){
+	if (onetwo === 'one')
+	{
+		if (inputvalue === 'true')
+		{
 			eval('document.form.'+inputname.substring(0,inputname.indexOf('one'))+'twowaytoguest.value=false');
 		}
 	}
-	else{
-		if(inputvalue == 'true'){
+	else
+	{
+		if (inputvalue === 'true')
+		{
 			eval('document.form.'+inputname.substring(0,inputname.indexOf('two'))+'onewaytoguest.value=false');
 		}
 	}
@@ -651,41 +713,45 @@ function Validate_OneTwoWay(forminput){
 /**----------------------------------------**/
 /** Modified by Martinski W. [2022-Mar-24] **/
 /**----------------------------------------**/
-function Validate_All(){
+function Validate_All()
+{
 	var validationfailed = false, thePrefix='';
 	failedfields = [];
-	for(var i=0; i < numOfBands; i++){
-		for(var i2=1; i2 <= theGuestNet.numOfGNsPerBand; i2++)
+	for (var i1=0; i1 < numOfBands; i1++)
+	{
+		for (var i2=1; i2 <= theGuestNet.numOfGNsPerBand; i2++)
 		{
-			thePrefix='yazfi_wl'+i+i2;
+			thePrefix='yazfi_wl'+i1+i2;
 			if (eval('document.form.'+thePrefix+'_enabled').value == 'false') {continue;}
-			if(! Validate_IP(eval('document.form.'+thePrefix+'_ipaddr'),'IP')){validationfailed=true;}
-			if(! Validate_DHCP(eval('document.form.'+thePrefix+'_'+theDHCPStart.varName),theDHCPStart.varType)){validationfailed=true;}
-			if(! Validate_DHCP(eval('document.form.'+thePrefix+'_'+theDHCPEnd.varName),theDHCPEnd.varType)){validationfailed=true;}
-			if(! Validate_DHCP(eval('document.form.'+thePrefix+'_'+theDHCPLeaseTime.varName),theDHCPLeaseTime.varType)){validationfailed=true;}
-			if(! Validate_IP(eval('document.form.'+thePrefix+'_dns1'),'DNS')){validationfailed=true;}
-			if(! Validate_IP(eval('document.form.'+thePrefix+'_dns2'),'DNS')){validationfailed=true;}
-			if(! Validate_VPNClientNo(eval('document.form.'+thePrefix+'_vpnclientnumber'))){validationfailed=true;}
+			if (! Validate_IP(eval('document.form.'+thePrefix+'_ipaddr'),'IP')) {validationfailed=true;}
+			if (! Validate_DHCP(eval('document.form.'+thePrefix+'_'+theDHCPStart.varName),theDHCPStart.varType)) {validationfailed=true;}
+			if (! Validate_DHCP(eval('document.form.'+thePrefix+'_'+theDHCPEnd.varName),theDHCPEnd.varType)) {validationfailed=true;}
+			if (! Validate_DHCP(eval('document.form.'+thePrefix+'_'+theDHCPLeaseTime.varName),theDHCPLeaseTime.varType)) {validationfailed=true;}
+			if (! Validate_IP(eval('document.form.'+thePrefix+'_dns1'),'DNS')) {validationfailed=true;}
+			if (! Validate_IP(eval('document.form.'+thePrefix+'_dns2'),'DNS')) {validationfailed=true;}
+			if (! Validate_VPNClientNo(eval('document.form.'+thePrefix+'_vpnclientnumber'))) {validationfailed=true;}
 		}
 	}
 
 	var failedfieldsstring = '';
-	for(var i=0; i < failedfields.length; i++)
+	for (var i=0; i < failedfields.length; i++)
 	{
 		var guestnework = '';
 		var prefix = failedfields[i][0].attr('name').split('_')[1];
-		let theIFprefix=prefix.substring(0,3);
-		let theIFnumber=prefix.substring(3,4);
+		let theIFprefix = prefix.substring(0,3);
+		let theIFnumber = prefix.substring(3,4);
 		guestnetwork = theGuestNet.UILabelFromPrefix(theIFprefix)+' Guest Network '+theIFnumber;
 
 		failedfieldsstring += guestnetwork+' - '+failedfields[i][0].parent().parent().children().children()[0].innerHTML+' - '+failedfields[i][1]+'\n';
 	}
 
-	if(validationfailed){
+	if (validationfailed)
+	{
 		alert('Validation for some fields failed, shown below. Please correct invalid values and try again.\n'+failedfieldsstring);
 		return false;
 	}
-	else{
+	else
+	{
 		return true;
 	}
 }
@@ -693,60 +759,64 @@ function Validate_All(){
 /**----------------------------------------**/
 /** Modified by Martinski W. [2024-Jul-21] **/
 /**----------------------------------------**/
-function get_conf_file(){
+function get_conf_file()
+{
 	$.ajax({
 		url: '/ext/YazFi/config.htm',
 		dataType: 'text',
 		error: function(xhr){
 			setTimeout(get_conf_file,1000);
 		},
-		success: function(data){
-			var settings = data.split('\n');
+		success: function(data)
+		{
+			let settings = data.split('\n');
 			settings.reverse();
 			settings = settings.filter(Boolean);
-			let linesCount=settings.length;
-			let settingsCount=0;
+			let settingsCount = 0;
+			let settingName, settingValue;
 			let ifaceVarPrefix, ifacePrefix;
 			let showIFprefix, theIFprefixTag;
 			let ifaceUILabel, guestNetUILabel;
 			window['yazfi_settings'] = [];
+			let linesCount = settings.length;
 
-			for(var i = 0; i < linesCount; i++)
+			for (var i = 0; i < linesCount; i++)
 			{
-				ifaceVarPrefix=settings[i].match(/^wl[0-3][1-3]_/);
-				var commentstart = settings[i].indexOf('#');
-				if (commentstart != -1 || ifaceVarPrefix == null) {continue;}
-				settingsCount+=1;
-				var setting=settings[i].split('=');
-				window['yazfi_settings'].unshift(setting);
+				ifaceVarPrefix = settings[i].match(/^wl[0-3][1-3]_/);
+				var commentIndex = settings[i].indexOf('#');
+				if (commentIndex !== -1 || ifaceVarPrefix === null)
+				{continue;}
+				var settingPair = settings[i].split('=');
+				window['yazfi_settings'].unshift(settingPair);
+				settingsCount += 1;
 			}
 
-			if (typeof wl_info == 'undefined' || wl_info == null)
+			if (typeof wl_info === 'undefined' || wl_info === null)
 			{
 				numOfBands = 2;
 
-				ifacePrefix=theGuestNet.IFacePrefix (band_24GHz);
-				ifaceUILabel=theGuestNet.IFaceUILabel (band_24GHz);
-				guestNetUILabel=`${ifaceUILabel} Guest Networks`;
+				ifacePrefix = theGuestNet.IFacePrefix (band_24GHz);
+				ifaceUILabel = theGuestNet.IFaceUILabel (band_24GHz);
+				guestNetUILabel = `${ifaceUILabel} Guest Networks`;
 
 				$('#table_config').append(BuildConfigTable(ifacePrefix, guestNetUILabel));
 				$('#table_config').append('<tr><td style="padding:0px;height:10px;"></td></tr>');
 
-				ifacePrefix=theGuestNet.IFacePrefix (band_5GHz_1);
-				ifaceUILabel=theGuestNet.IFaceUILabel (band_5GHz_1);
-				guestNetUILabel=`${ifaceUILabel} Guest Networks`;
+				ifacePrefix = theGuestNet.IFacePrefix (band_5GHz_1);
+				ifaceUILabel = theGuestNet.IFaceUILabel (band_5GHz_1);
+				guestNetUILabel = `${ifaceUILabel} Guest Networks`;
 
 				$('#table_config').append(BuildConfigTable(ifacePrefix, guestNetUILabel));
 			}
 			else
 			{
-				showIFprefix=wl_info.band6g_support;
+				showIFprefix = wl_info.band6g_support;
 
 				if (wl_info.band2g_support)
 				{
 					theIFprefixTag='';
-					ifacePrefix=theGuestNet.IFacePrefix (band_24GHz);
-					ifaceUILabel=theGuestNet.IFaceUILabel (band_24GHz);
+					ifacePrefix = theGuestNet.IFacePrefix (band_24GHz);
+					ifaceUILabel = theGuestNet.IFaceUILabel (band_24GHz);
 					if (showIFprefix) theIFprefixTag=` [${ifacePrefix}]`;
 					guestNetUILabel=`${ifaceUILabel}${theIFprefixTag} Guest Networks`;
 
@@ -756,8 +826,8 @@ function get_conf_file(){
 				if (wl_info.band5g_support)
 				{
 					theIFprefixTag='';
-					ifacePrefix=theGuestNet.IFacePrefix (band_5GHz_1);
-					ifaceUILabel=theGuestNet.IFaceUILabel (band_5GHz_1);
+					ifacePrefix = theGuestNet.IFacePrefix (band_5GHz_1);
+					ifaceUILabel = theGuestNet.IFaceUILabel (band_5GHz_1);
 					if (showIFprefix) theIFprefixTag=` [${ifacePrefix}]`;
 					guestNetUILabel=`${ifaceUILabel}${theIFprefixTag} Guest Networks`;
 
@@ -768,8 +838,8 @@ function get_conf_file(){
 				if (wl_info.band5g_2_support)
 				{
 					theIFprefixTag='';
-					ifacePrefix=theGuestNet.IFacePrefix (band_5GHz_2);
-					ifaceUILabel=theGuestNet.IFaceUILabel (band_5GHz_2);
+					ifacePrefix = theGuestNet.IFacePrefix (band_5GHz_2);
+					ifaceUILabel = theGuestNet.IFaceUILabel (band_5GHz_2);
 					if (showIFprefix) theIFprefixTag=` [${ifacePrefix}]`;
 					guestNetUILabel=`${ifaceUILabel}${theIFprefixTag} Guest Networks`;
 
@@ -781,8 +851,8 @@ function get_conf_file(){
 				    wl_info.band6g_support)
 				{
 					theIFprefixTag='';
-					ifacePrefix=theGuestNet.IFacePrefix (band_6GHz_1);
-					ifaceUILabel=theGuestNet.IFaceUILabel (band_6GHz_1);
+					ifacePrefix = theGuestNet.IFacePrefix (band_6GHz_1);
+					ifaceUILabel = theGuestNet.IFaceUILabel (band_6GHz_1);
 					if (showIFprefix) theIFprefixTag=` [${ifacePrefix}]`;
 					guestNetUILabel=`${ifaceUILabel}${theIFprefixTag} Guest Networks`;
 
@@ -794,8 +864,8 @@ function get_conf_file(){
 				    wl_info.band6g_2_support)
 				{
 					theIFprefixTag='';
-					ifacePrefix=theGuestNet.IFacePrefix (band_6GHz_2);
-					ifaceUILabel=theGuestNet.IFaceUILabel (band_6GHz_2);
+					ifacePrefix = theGuestNet.IFacePrefix (band_6GHz_2);
+					ifaceUILabel = theGuestNet.IFaceUILabel (band_6GHz_2);
 					if (showIFprefix) theIFprefixTag=` [${ifacePrefix}]`;
 					guestNetUILabel=`${ifaceUILabel}${theIFprefixTag} Guest Networks`;
 
@@ -810,40 +880,52 @@ function get_conf_file(){
 			buttonshtml += '<input name="button" type="button" class="button_gen" onclick="SaveConfig();" value="Apply"/></td></tr>';
 			$('#table_config').append(buttonshtml);
 
-			for(var i = 0; i < settingsCount; i++)
+			for (var i = 0; i < settingsCount; i++)
 			{
-				var settingname = window['yazfi_settings'][i][0].toLowerCase();
-				var settingvalue = window['yazfi_settings'][i][1];
-				let varNameTags=settingname.split('_');
-				let supportedBand=false;
-				let supportedField=listOfGUIFieldNames.includes(varNameTags[1]);
+				settingName = window['yazfi_settings'][i][0].toLowerCase();
+				settingValue = window['yazfi_settings'][i][1];
+				let ifaceKeyID, keyNameTag;
+				let supportedBand = false, supportedField = false;
 
-				for(var cnt = 0; cnt < numOfBands; cnt++)
+				let ifaceIndex = settingName.indexOf('_');
+				if (ifaceIndex === -1) {continue;}
+				ifaceKeyID = settingName.slice(0, ifaceIndex);
+				keyNameTag = settingName.slice(ifaceIndex + 1);
+
+				if (listOfGUIFieldNames.includes(keyNameTag))
+				{ supportedField = true; }
+
+				for (var cnt = 0; cnt < numOfBands; cnt++)
 				{
-				   if (theGuestNet.listOfBandIFtags[cnt].includes(varNameTags[0]))
-				   { supportedBand=true; break; }
+				   if (theGuestNet.listOfBandIFtags[cnt].includes(ifaceKeyID))
+				   { supportedBand = true; break; }
 				}
 				if (!supportedBand || !supportedField) {continue;}
 
-				eval('document.form.yazfi_'+settingname).value = settingvalue;
-				if(settingname.indexOf('forcedns') != -1) SubOptionsEnableDisable($('#yazfi_'+settingname.replace('_forcedns','')+'_fdns_'+settingvalue)[0],'dns');
-				if(settingname.indexOf('redirectalltovpn') != -1) SubOptionsEnableDisable($('#yazfi_'+settingname.replace('_redirectalltovpn','')+'_redir_'+settingvalue)[0],'vpn');
-				if(settingname.indexOf('allowinternet') != -1) SubOptionsEnableDisable($('#yazfi_'+settingname.replace('_allowinternet','')+'_allowinet_'+settingvalue)[0],'allowinternet');
-				if(settingname.indexOf('enabled') != -1) OptionsEnableDisable($('#yazfi_'+settingname.replace('_enabled','')+'_en_'+settingvalue)[0]);
+				eval('document.form.yazfi_'+settingName).value = settingValue;
+				if (settingName.indexOf('forcedns') != -1) SubOptionsEnableDisable($('#yazfi_'+settingName.replace('_forcedns','')+'_fdns_'+settingValue)[0],'dns');
+				if (settingName.indexOf('redirectalltovpn') != -1) SubOptionsEnableDisable($('#yazfi_'+settingName.replace('_redirectalltovpn','')+'_redir_'+settingValue)[0],'vpn');
+				if (settingName.indexOf('allowinternet') != -1) SubOptionsEnableDisable($('#yazfi_'+settingName.replace('_allowinternet','')+'_allowinet_'+settingValue)[0],'allowinternet');
+				if (settingName.indexOf('enabled') != -1) OptionsEnableDisable($('#yazfi_'+settingName.replace('_enabled','')+'_en_'+settingValue)[0]);
 			}
 
-			if($('#firmver').text()*1 < 386.1){
-				if(productid == 'RT-AX88U' || productid == 'RT-AX3000'){
+			if ($('#firmver').text()*1 < 386.1)
+			{
+				if (productid == 'RT-AX88U' || productid == 'RT-AX3000')
+				{
 					$('input[name*=clientisolation][value=false]').prop('checked',true);
 					$('input[name*=clientisolation]').attr('disabled',true);
 				}
 			}
 
-			for(var i = 0; i < numOfBands; i++){
-				for(var i2 = 1; i2 <= theGuestNet.numOfGNsPerBand; i2++){
-					if(eval('document.form.wl'+i+i2+'_bss_enabled').value == 0){
-						OptionsEnableDisable($('#yazfi_wl'+i+i2+'_en_false')[0]);
-						$('input[name=yazfi_wl'+i+i2+'_enabled]').prop('disabled',true);
+			for (var i1 = 0; i1 < numOfBands; i1++)
+			{
+				for (var i2 = 1; i2 <= theGuestNet.numOfGNsPerBand; i2++)
+				{
+					if (eval('document.form.wl'+i1+i2+'_bss_enabled').value == 0)
+					{
+						OptionsEnableDisable($('#yazfi_wl'+i1+i2+'_en_false')[0]);
+						$('input[name=yazfi_wl'+i1+i2+'_enabled]').prop('disabled',true);
 					}
 				}
 			}
@@ -854,13 +936,17 @@ function get_conf_file(){
 /**----------------------------------------**/
 /** Modified by Martinski W. [2022-Dec-23] **/
 /**----------------------------------------**/
-function get_connected_clients_file(){
+function get_connected_clients_file()
+{
 	d3.csv('/ext/YazFi/connectedclients.htm').then(function(data){
-		if(data.length > 0){
+		if (data.length > 0)
+		{
 			var unique = [];
 			var YazFiInterfaces = [];
-			for(var i = 0; i < data.length; i++){
-				if(!unique[data[i].INTERFACE]){
+			for (var i = 0; i < data.length; i++)
+			{
+				if (!unique[data[i].INTERFACE])
+				{
 					YazFiInterfaces.push(data[i].INTERFACE.replace('.',''));
 					unique[data[i].INTERFACE] = 1;
 				}
@@ -868,9 +954,11 @@ function get_connected_clients_file(){
 
 			$('#table_connectedclients').empty();
 
-			for(var i = 0; i < numOfBands; i++){
-				for(var i2 = 1; i2 <= theGuestNet.numOfGNsPerBand; i2++){
-					YazFiInterface = 'wl'+i.toString()+i2.toString();
+			for (var i1 = 0; i1 < numOfBands; i1++)
+			{
+				for (var i2 = 1; i2 <= theGuestNet.numOfGNsPerBand; i2++)
+				{
+					YazFiInterface = 'wl'+i1.toString()+i2.toString();
 					window['clients'+YazFiInterface] = data.filter(function(item){
 						return item.INTERFACE.replace('.','') == YazFiInterface;
 					}).map(function(obj){
@@ -886,13 +974,18 @@ function get_connected_clients_file(){
 						}
 					});
 
-					if(eval('document.form.yazfi_'+YazFiInterface+'_enabled.value') == "true" && eval('document.form.'+YazFiInterface+'_bss_enabled.value') == 1){
+					if (eval('document.form.yazfi_'+YazFiInterface+'_enabled').value == 'true' &&
+					    eval('document.form.'+YazFiInterface+'_bss_enabled').value == 1)
+					{
 						$('#table_connectedclients').append(BuildConnectedClientPlaceholderTable(YazFiInterface,eval('document.form.'+YazFiInterface+'_ssid.value')));
 
-						if(window['clients'+YazFiInterface].length > 0 && window['clients'+YazFiInterface][0].IPAddress != 'NOCLIENTS'){
+						if (window['clients'+YazFiInterface].length > 0 &&
+						    window['clients'+YazFiInterface][0].IPAddress != 'NOCLIENTS')
+						{
 							SortTable('sortTable'+YazFiInterface,'clients'+YazFiInterface,eval('sortname'+YazFiInterface)+' '+eval('sortdir'+YazFiInterface).replace('desc','↑').replace('asc','↓').trim(),'sortname'+YazFiInterface,'sortdir'+YazFiInterface);
 						}
-						else{
+						else
+						{
 							$('#sortTable'+YazFiInterface).css('height','30px');
 							$('#sortTable'+YazFiInterface).css('overflow-y','hidden');
 							$('#sortTable'+YazFiInterface).append(BuildConnectedClientsTableNoData('sortTable'+YazFiInterface));
@@ -901,20 +994,23 @@ function get_connected_clients_file(){
 				}
 			}
 		}
-		if(document.getElementById('auto_refresh').checked){
-			document.formScriptActions.action_script.value='start_YazFiconnectedclients';
+		if (document.getElementById('auto_refresh').checked)
+		{
+			document.formScriptActions.action_script.value = 'start_YazFiconnectedclients';
 			document.formScriptActions.submit();
-			tout = setTimeout(get_connected_clients_file,5000);
+			tmout = setTimeout(get_connected_clients_file,5000);
 		}
 		AddEventHandlers();
-	}).catch(function(){tout = setTimeout(get_connected_clients_file,1000);});
+	}).catch(function(){tmout = setTimeout(get_connected_clients_file,2000);});
 }
 
-function SortTable(tableid,arrayid,sorttext,sortname,sortdir){
+function SortTable(tableid,arrayid,sorttext,sortname,sortdir)
+{
 	window[sortname] = sorttext.replace('↑','').replace('↓','').trim();
 	var sorttype = 'string';
 	var sortfield = window[sortname];
-	switch(window[sortname]){
+	switch(window[sortname])
+	{
 		case 'Connected':
 			sorttype = 'time';
 		break
@@ -925,44 +1021,56 @@ function SortTable(tableid,arrayid,sorttext,sortname,sortdir){
 		break
 	}
 
-	if(sorttype == 'string'){
-		if(sorttext.indexOf('↓') == -1 && sorttext.indexOf('↑') == -1){
+	if (sorttype === 'string')
+	{
+		if (sorttext.indexOf('↓') === -1 && sorttext.indexOf('↑') === -1)
+		{
 			eval(arrayid+' = '+arrayid+'.sort((a,b) => (a.'+sortfield+'.toLowerCase() > b.'+sortfield+'.toLowerCase()) ? 1 : ((b.'+sortfield+'.toLowerCase() > a.'+sortfield+'.toLowerCase()) ? -1 : 0));');
 			window[sortdir] = 'asc';
 		}
-		else if(sorttext.indexOf('↓') != -1){
+		else if (sorttext.indexOf('↓') != -1)
+		{
 			eval(arrayid+' = '+arrayid+'.sort((a,b) => (a.'+sortfield+'.toLowerCase() > b.'+sortfield+'.toLowerCase()) ? 1 : ((b.'+sortfield+'.toLowerCase() > a.'+sortfield+'.toLowerCase()) ? -1 : 0));');
 			window[sortdir] = 'asc';
 		}
-		else{
+		else
+		{
 			eval(arrayid+' = '+arrayid+'.sort((a,b) => (a.'+sortfield+'.toLowerCase() < b.'+sortfield+'.toLowerCase()) ? 1 : ((b.'+sortfield+'.toLowerCase() < a.'+sortfield+'.toLowerCase()) ? -1 : 0));');
 			window[sortdir] = 'desc';
 		}
 	}
-	else if(sorttype == 'number'){
-		if(sorttext.indexOf('↓') == -1 && sorttext.indexOf('↑') == -1){
+	else if (sorttype === 'number')
+	{
+		if (sorttext.indexOf('↓') === -1 && sorttext.indexOf('↑') === -1)
+		{
 			eval(arrayid+' = '+arrayid+'.sort((a,b) => parseFloat(a.'+sortfield+'.replace("m","000")) - parseFloat(b.'+sortfield+'.replace("m","000")));');
 			window[sortdir] = 'asc';
 		}
-		else if(sorttext.indexOf('↓') != -1){
+		else if (sorttext.indexOf('↓') != -1)
+		{
 			eval(arrayid+' = '+arrayid+'.sort((a,b) => parseFloat(a.'+sortfield+'.replace("m","000")) - parseFloat(b.'+sortfield+'.replace("m","000")));');
 			window[sortdir] = 'asc';
 		}
-		else{
+		else
+		{
 			eval(arrayid+' = '+arrayid+'.sort((a,b) => parseFloat(b.'+sortfield+'.replace("m","000")) - parseFloat(a.'+sortfield+'.replace("m","000")));');
 			window[sortdir] = 'desc';
 		}
 	}
-	else if(sorttype == 'time'){
-		if(sorttext.indexOf('↓') == -1 && sorttext.indexOf('↑') == -1){
+	else if (sorttype === 'time')
+	{
+		if (sorttext.indexOf('↓') === -1 && sorttext.indexOf('↑') === -1)
+		{
 			eval(arrayid+' = '+arrayid+'.sort((a,b) => parseFloat(HHMMSStoS(a.'+sortfield+'.replace("m","000"))) - parseFloat(HHMMSStoS(b.'+sortfield+'.replace("m","000"))));');
 			window[sortdir] = 'asc';
 		}
-		else if(sorttext.indexOf('↓') != -1){
+		else if (sorttext.indexOf('↓') != -1)
+		{
 			eval(arrayid+' = '+arrayid+'.sort((a,b) => parseFloat(HHMMSStoS(a.'+sortfield+'.replace("m","000"))) - parseFloat(HHMMSStoS(b.'+sortfield+'.replace("m","000"))));');
 			window[sortdir] = 'asc';
 		}
-		else{
+		else
+		{
 			eval(arrayid+' = '+arrayid+'.sort((a,b) => parseFloat(HHMMSStoS(b.'+sortfield+'.replace("m","000"))) - parseFloat(HHMMSStoS(a.'+sortfield+'.replace("m","000"))));');
 			window[sortdir] = 'desc';
 		}
@@ -972,18 +1080,22 @@ function SortTable(tableid,arrayid,sorttext,sortname,sortdir){
 	$('#'+tableid).append(BuildConnectedClientsTable(tableid.replace('sortTable','')));
 
 	$('#'+tableid).find('.sortable').each(function(index,element){
-		if(element.innerHTML.replace(/ \(.*\)/,'').replace(' ','') == window[sortname]){
-			if(window[sortdir] == 'asc'){
+		if (element.innerHTML.replace(/ \(.*\)/,'').replace(' ','') == window[sortname])
+		{
+			if (window[sortdir] === 'asc')
+			{
 				element.innerHTML = element.innerHTML+' ↑';
 			}
-			else{
+			else
+			{
 				element.innerHTML = element.innerHTML+' ↓';
 			}
 		}
 	});
 }
 
-function BuildConnectedClientPlaceholderTable(iface,title){
+function BuildConnectedClientPlaceholderTable(iface,title)
+{
 	var tablehtml = '<div style="line-height:10px;">&nbsp;</div>';
 	tablehtml+='<tr><td style="padding:0px;">';
 	tablehtml+='<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable" id="table_clients_'+iface+'">';
@@ -1003,7 +1115,8 @@ function BuildConnectedClientPlaceholderTable(iface,title){
 	return tablehtml;
 }
 
-function BuildConnectedClientsTableNoData(){
+function BuildConnectedClientsTableNoData()
+{
 	var tablehtml = '<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="sortTable">';
 	tablehtml += '<tr>';
 	tablehtml += '<td class="nodata">';
@@ -1014,7 +1127,8 @@ function BuildConnectedClientsTableNoData(){
 	return tablehtml;
 }
 
-function BuildConnectedClientsTable(name){
+function BuildConnectedClientsTable(name)
+{
 	var tablehtml = '<table border="0" cellpadding="0" cellspacing="0" width="100%" class="sortTable">';
 	tablehtml += '<col style="width:150px;">';
 	tablehtml += '<col style="width:100px;">';
@@ -1039,7 +1153,8 @@ function BuildConnectedClientsTable(name){
 	tablehtml += '</thead>';
 	tablehtml += '<tbody class="sortTableContent">';
 
-	for(var i = 0; i < window['clients'+name].length; i++){
+	for (var i = 0; i < window['clients'+name].length; i++)
+	{
 		tablehtml += '<tr class="sortRow">';
 		tablehtml += '<td>'+window['clients'+name][i].Hostname+'</td>';
 		tablehtml += '<td>'+window['clients'+name][i].IPAddress+'</td>';
@@ -1059,7 +1174,8 @@ function BuildConnectedClientsTable(name){
 /**----------------------------------------**/
 /** Modified by Martinski W. [2022-Dec-05] **/
 /**----------------------------------------**/
-function BuildConfigTable(prefix,title){
+function BuildConfigTable(prefix,title)
+{
 	var tablehtml = '<tr><td style="padding:0px;">';
 	tablehtml+='<table width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable" id="table_config_'+prefix+'">';
 	tablehtml+='<thead class="collapsible-jquery" id="'+prefix+'">';
@@ -1089,29 +1205,36 @@ function BuildConfigTable(prefix,title){
 	tablehtml+='<th>'+eval('document.form.'+prefix+'3_ssid.value')+'</th>';
 	tablehtml+='</tr>'
 
-	var enabled1 = eval('document.form.'+prefix+'1_bss_enabled.value');
-	var enabled2 = eval('document.form.'+prefix+'2_bss_enabled.value');
-	var enabled3 = eval('document.form.'+prefix+'3_bss_enabled.value');
+	var enabled1 = eval('document.form.'+prefix+'1_bss_enabled').value;
+	var enabled2 = eval('document.form.'+prefix+'2_bss_enabled').value;
+	var enabled3 = eval('document.form.'+prefix+'3_bss_enabled').value;
 
-	if( enabled1 == 0 || enabled2 == 0 || enabled3 == 0){
+	if (enabled1 == 0 || enabled2 == 0 || enabled3 == 0)
+	{
 		tablehtml+='<tr>';
 		tablehtml+='<th>&nbsp;</th>';
-		if(enabled1 == 0){
+		if (enabled1 == 0)
+		{
 			tablehtml+='<th class="bss">Disabled on Guest Network Tab</th>';
 		}
-		else{
+		else
+		{
 			tablehtml+='<th>&nbsp;</th>';
 		}
-		if(enabled2 == 0){
+		if (enabled2 == 0)
+		{
 			tablehtml+='<th class="bss">Disabled on Guest Network Tab</th>';
 		}
-		else{
+		else
+		{
 			tablehtml+='<th>&nbsp;</th>';
 		}
-		if(enabled3 == 0){
+		if (enabled3 == 0)
+		{
 			tablehtml+='<th class="bss">Disabled on Guest Network Tab</th>';
 		}
-		else{
+		else
+		{
 			tablehtml+='<th>&nbsp;</th>';
 		}
 		tablehtml+='</tr>'
@@ -1236,17 +1359,20 @@ function BuildConfigTable(prefix,title){
 	return tablehtml;
 }
 
-function SetCurrentPage(){
+function SetCurrentPage()
+{
 	document.form.next_page.value = window.location.pathname.substring(1);
 	document.form.current_page.value = window.location.pathname.substring(1);
 }
 
-function ScriptUpdateLayout(){
+function ScriptUpdateLayout()
+{
 	var localver = GetVersionNumber('local');
 	var serverver = GetVersionNumber('server');
 	$('#yazfi_version_local').text(localver);
 
-	if(localver != serverver && serverver != 'N/A'){
+	if (localver != serverver && serverver != 'N/A')
+	{
 		$('#yazfi_version_server').text('Updated version available: '+serverver);
 		showhide('btnChkUpdate',false);
 		showhide('yazfi_version_server',true);
@@ -1254,26 +1380,32 @@ function ScriptUpdateLayout(){
 	}
 }
 
-function update_status(){
+function update_status()
+{
 	$.ajax({
 		url: '/ext/YazFi/detect_update.js',
 		dataType: 'script',
 		error: function(xhr){
 			setTimeout(update_status,1000);
 		},
-		success: function(){
-			if (updatestatus == 'InProgress'){
+		success: function()
+		{
+			if (updatestatus === 'InProgress')
+			{
 				setTimeout(update_status,1000);
 			}
-			else{
+			else
+			{
 				document.getElementById('imgChkUpdate').style.display = 'none';
 				showhide('yazfi_version_server',true);
-				if(updatestatus != 'None'){
+				if (updatestatus !== 'None')
+				{
 					$('#yazfi_version_server').text('Updated version available: '+updatestatus);
 					showhide('btnChkUpdate',false);
 					showhide('btnDoUpdate',true);
 				}
-				else{
+				else
+				{
 					$('#yazfi_version_server').text('No update available');
 					showhide('btnChkUpdate',true);
 					showhide('btnDoUpdate',false);
@@ -1283,91 +1415,144 @@ function update_status(){
 	});
 }
 
-function CheckUpdate(){
+function CheckUpdate()
+{
 	showhide('btnChkUpdate',false);
-	document.formScriptActions.action_script.value='start_YazFicheckupdate'
+	document.formScriptActions.action_script.value = 'start_YazFicheckupdate';
 	document.formScriptActions.submit();
 	document.getElementById('imgChkUpdate').style.display = '';
 	setTimeout(update_status,2000);
 }
 
-function DoUpdate(){
+function DoUpdate()
+{
 	$('#auto_refresh').prop('checked',false);
-	clearTimeout(tout);
+	if (tmout !== null) { clearTimeout(tmout); }
 	document.form.action_script.value = 'start_YazFidoupdate';
 	document.form.action_wait.value = 45;
 	showLoading();
 	document.form.submit();
 }
 
-function GetVersionNumber(versiontype){
+function GetVersionNumber(versiontype)
+{
 	var versionprop;
-	if(versiontype == 'local'){
+	if (versiontype === 'local')
+	{
 		versionprop = custom_settings.yazfi_version_local;
 	}
-	else if(versiontype == 'server'){
+	else if (versiontype === 'server')
+	{
 		versionprop = custom_settings.yazfi_version_server;
 	}
-
-	if(typeof versionprop == 'undefined' || versionprop == null){
+	if (typeof versionprop === 'undefined' || versionprop === null)
+	{
 		return 'N/A';
 	}
-	else{
+	else
+	{
 		return versionprop;
 	}
 }
 
-function GetCookie(cookiename,returntype){
-	if (cookie.get('yazfi_'+cookiename) != null){
+/**----------------------------------------------------------------**
+ ** Compatibility layer for the latest AsusWRT6 routers, such as
+ ** the GT-BE19000AI, where the previous global 'cookie' helper 
+ ** functions defined in the 'state.js' file are now removed in 
+ ** favour of using the "window.localStorage" property.
+ **----------------------------------------------------------------**/
+if (typeof window.cookie === "undefined" ||
+    typeof window.cookie.get !== "function" ||
+    typeof window.cookie.set !== "function")
+{
+    window.cookie =
+    {
+        get: function(key)
+        {
+            return window.localStorage.getItem(key);
+        },
+
+        /** In the previous 'cookie' function a 3rd argument was given for 'days' **/
+        /** Here, we ignore the value because there is no expiration date anymore **/
+        set: function(key, value, days)
+        {
+            window.localStorage.setItem(key, String(value));
+        },
+
+        unset: function(key)
+        {
+            window.localStorage.removeItem(key);
+        }
+    };
+
+    console.log("Installed localStorage compatibility for cookie API.");
+}
+
+function GetCookie(cookiename,returntype)
+{
+	if (cookie.get('yazfi_'+cookiename) !== null)
+	{
 		return cookie.get('yazfi_'+cookiename);
 	}
-	else{
-		if(returntype == 'string'){
+	else
+	{
+		if (returntype === 'string')
+		{
 			return '';
 		}
-		else if(returntype == 'number'){
+		else if (returntype === 'number')
+		{
 			return 0;
 		}
 	}
 }
 
-function SetCookie(cookiename,cookievalue){
-	cookie.set('yazfi_'+cookiename,cookievalue,10*365);
+function SetCookie(cookiename,cookievalue)
+{
+	cookie.set('yazfi_'+cookiename, cookievalue, 10*365);
 }
 
-function SaveConfig(){
-	if(Validate_All()){
+function SaveConfig()
+{
+	if (Validate_All())
+	{
 		$('[name*=yazfi_]').prop('disabled',false);
 		document.getElementById('amng_custom').value = JSON.stringify($('form').serializeObject());
 		document.form.action_script.value = 'start_YazFi';
 		document.form.action_wait.value = 45;
 		$('#auto_refresh').prop('checked',false);
-		clearTimeout(tout);
+		if (tmout !== null) { clearTimeout(tmout); }
 		showLoading();
 		document.form.submit();
 	}
-	else{
+	else
+	{
 		return false;
 	}
 }
 
-function AddEventHandlers(){
+function AddEventHandlers()
+{
 	$('.collapsible-jquery').off('click').on('click',function(){
 		$(this).siblings().toggle('fast',function(){
-			if($(this).css('display') == 'none'){
+			if ($(this).css('display') === 'none')
+			{
 				SetCookie($(this).siblings()[0].id,'collapsed');
 			}
-			else{
+			else
+			{
 				SetCookie($(this).siblings()[0].id,'expanded');
 			}
 		})
 	});
 
 	$('.collapsible-jquery').each(function(index,element){
-		if(GetCookie($(this)[0].id,'string') == 'collapsed'){
+		if (GetCookie($(this)[0].id,'string') === 'collapsed')
+		{
 			$(this).siblings().toggle(false);
 		}
-		else{
+		else
+		{
 			$(this).siblings().toggle(true);
 		}
 	});
@@ -1375,14 +1560,17 @@ function AddEventHandlers(){
 	$('#auto_refresh').off('click').on('click',function(){ToggleRefresh();});
 }
 
-function ToggleRefresh(){
-	if($('#auto_refresh').prop('checked') == true){
-		document.formScriptActions.action_script.value='start_YazFiconnectedclients';
+function ToggleRefresh()
+{
+	if ($('#auto_refresh').prop('checked') === true)
+	{
+		document.formScriptActions.action_script.value = 'start_YazFiconnectedclients';
 		document.formScriptActions.submit();
-		tout = setTimeout(get_connected_clients_file,5000);
+		tmout = setTimeout(get_connected_clients_file,5000);
 	}
-	else{
-		clearTimeout(tout);
+	else
+	{
+		if (tmout !== null) { clearTimeout(tmout); }
 	}
 }
 
@@ -1390,19 +1578,27 @@ $.fn.serializeObject = function(){
 	var o = custom_settings;
 	var a = this.serializeArray();
 	$.each(a,function(){
-		if (o[this.name] !== undefined && this.name.indexOf('yazfi') != -1 && this.name.indexOf('version') == -1){
-			if (!o[this.name].push){
+		if (o[this.name] !== undefined &&
+		    this.name.indexOf('yazfi') !== -1 &&
+		    this.name.indexOf('version') === -1)
+		{
+			if (!o[this.name].push)
+			{
 				o[this.name] = [o[this.name]];
 			}
 			o[this.name].push(this.value || '');
-		} else if (this.name.indexOf('yazfi') != -1 && this.name.indexOf('version') == -1){
+		}
+		else if (this.name.indexOf('yazfi') !== -1 &&
+		         this.name.indexOf('version') === -1)
+		{
 			o[this.name] = this.value || '';
 		}
 	});
 	return o;
 };
 
-function StoHHMMSS(secs){
+function StoHHMMSS(secs)
+{
 	var sec_num = parseInt(secs, 10)
 	var hours   = Math.floor(sec_num / 3600)
 	var minutes = Math.floor(sec_num / 60) % 60
@@ -1411,11 +1607,13 @@ function StoHHMMSS(secs){
 	return [hours,minutes,seconds].map(v => v < 10 ? '0'+v : v).filter((v,i) => v !== '00' || i > 0).join(':');
 }
 
-function HHMMSStoS(HHMMSS){
+function HHMMSStoS(HHMMSS)
+{
 	var p = HHMMSS.split(':')
 	var s = 0
 	var m = 1;
-	while (p.length > 0){
+	while (p.length > 0)
+	{
 		s += m * parseInt(p.pop(), 10);
 		m *= 60;
 	}
