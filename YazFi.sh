@@ -17,7 +17,7 @@
 ##       Guest Network DHCP script and for       ##
 ##            AsusWRT-Merlin firmware            ##
 ###################################################
-# Last Modified: 2026-Aug-23
+# Last Modified: 2026-Aug-21
 #--------------------------------------------------
 
 ######       Shellcheck directives     ######
@@ -43,7 +43,7 @@ readonly SCRIPT_NAME="YazFi"
 readonly SCRIPT_CONF="/jffs/addons/$SCRIPT_NAME.d/config"
 readonly YAZFI_VERSION="v4.4.13"
 readonly SCRIPT_VERSION="v4.4.13"
-readonly SCRIPT_VERSTAG="26082318"
+readonly SCRIPT_VERSTAG="26082101"
 SCRIPT_BRANCH="develop"
 SCRIPT_REPO="https://raw.githubusercontent.com/AMTM-OSR/$SCRIPT_NAME/$SCRIPT_BRANCH"
 readonly SCRIPT_DIR="/jffs/addons/$SCRIPT_NAME.d"
@@ -1129,7 +1129,7 @@ ScriptUpdateFromAMTM()
 }
 
 ##------------------------------------------##
-## Modified by ExtremeFiretop [2026-Aug-23] ##
+## Modified by ExtremeFiretop [2026-Jul-02] ##
 ##------------------------------------------##
 Update_File()
 {
@@ -1178,42 +1178,29 @@ Update_File()
 	elif [ "$1" = "YazFi_networkmap.js" ]
 	then
 		tmpfile="/tmp/$1"
-		rm -f "$tmpfile"
-
-		if ! Download_File "$SCRIPT_REPO/$1" "$tmpfile"
+		if [ -s "$SCRIPT_DIR/$1" ]
 		then
-			Print_Output true "Unable to download $1" "$ERR"
+			Download_File "$SCRIPT_REPO/$1" "$tmpfile"
+			if [ -s "$tmpfile" ] && \
+			   grep -q "$NETWORKMAP_MARKER" "$tmpfile" && \
+			   ! diff -q "$tmpfile" "$SCRIPT_DIR/$1" >/dev/null 2>&1
+			then
+				mv -f "$tmpfile" "$SCRIPT_DIR/$1"
+				chmod 0644 "$SCRIPT_DIR/$1"
+				Print_Output true "New version of $1 downloaded" "$PASS"
+				NetworkMap_WebUI remount 2>/dev/null
+			fi
 			rm -f "$tmpfile"
-			return 1
-		fi
-
-		if [ ! -s "$tmpfile" ]
-		then
-			Print_Output true "Downloaded $1 is missing or empty" "$ERR"
-			rm -f "$tmpfile"
-			return 1
-		fi
-
-		if ! grep -qF "$NETWORKMAP_MARKER" "$tmpfile"
-		then
-			Print_Output true "Downloaded $1 failed validation" "$ERR"
-			rm -f "$tmpfile"
-			return 1
-		fi
-
-		if [ ! -s "$SCRIPT_DIR/$1" ]
-		then
-			mv -f "$tmpfile" "$SCRIPT_DIR/$1"
-			chmod 0644 "$SCRIPT_DIR/$1"
-			Print_Output true "$1 downloaded" "$PASS"
-			NetworkMap_WebUI remount 2>/dev/null
-		elif ! diff -q "$tmpfile" "$SCRIPT_DIR/$1" >/dev/null 2>&1
-		then
-			mv -f "$tmpfile" "$SCRIPT_DIR/$1"
-			chmod 0644 "$SCRIPT_DIR/$1"
-			Print_Output true "New version of $1 downloaded" "$PASS"
-			NetworkMap_WebUI remount 2>/dev/null
 		else
+			Download_File "$SCRIPT_REPO/$1" "$tmpfile"
+			if [ -s "$tmpfile" ] && \
+			   grep -q "$NETWORKMAP_MARKER" "$tmpfile"
+			then
+				mv -f "$tmpfile" "$SCRIPT_DIR/$1"
+				chmod 0644 "$SCRIPT_DIR/$1"
+				Print_Output true "$1 downloaded" "$PASS"
+				NetworkMap_WebUI remount 2>/dev/null
+			fi
 			rm -f "$tmpfile"
 		fi
 	elif [ "$1" = "README.md" ] || [ "$1" = "LICENSE" ]
@@ -2226,11 +2213,11 @@ NetworkMap_Status()
 	[ -s "$NETWORKMAP_JSON" ] && cat "$NETWORKMAP_JSON"
 }
 
-##------------------------------------------##
-## Modified by ExtremeFiretop [2026-Aug-23] ##
-##------------------------------------------##
+##----------------------------------------##
+## Modified by Martinski W. [2025-Mar-16] ##
+##----------------------------------------##
 Download_File()
-{ /usr/sbin/curl -fLSs --retry 4 --retry-delay 5 --retry-connrefused "$1" -o "$2" ; }
+{ /usr/sbin/curl -LSs --retry 4 --retry-delay 5 --retry-connrefused "$1" -o "$2" ; }
 
 ### function based on @dave14305's FlexQoS webconfigpage function ###
 ##----------------------------------------##
@@ -4823,9 +4810,9 @@ then SCRIPT_VERS_INFO=""
 else SCRIPT_VERS_INFO="[$versionDev_TAG]"
 fi
 
-##------------------------------------------##
-## Modified by ExtremeFiretop [2026-Aug-23] ##
-##------------------------------------------##
+##----------------------------------------##
+## Modified by Martinski W. [2026-Aug-20] ##
+##----------------------------------------##
 if [ $# -eq 0 ] || [ -z "$1" ]
 then
 	if ! _Firmware_Support_Check_
@@ -4854,11 +4841,6 @@ then
 	Set_Version_Custom_Settings local "$SCRIPT_VERSION"
 	Shortcut_Script create
 	_CheckFor_WebGUI_Page_
-	if Firmware_Version_WebUI && [ ! -s "$NETWORKMAP_SOURCE_JS" ]
-	then
-	    Print_Output true "Network Map JS source missing - attempting repair" "$WARN"
- 	   Update_File YazFi_networkmap.js
-	fi
 	NetworkMap_Apply
 	MainMenu
 	exit 0
