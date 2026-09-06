@@ -17,7 +17,7 @@
 ##       Guest Network DHCP script and for       ##
 ##            AsusWRT-Merlin firmware            ##
 ###################################################
-# Last Modified: 2026-Aug-23
+# Last Modified: 2026-Sep-06
 #--------------------------------------------------
 
 ######       Shellcheck directives     ######
@@ -40,24 +40,29 @@
 
 ### Start of script variables ###
 readonly SCRIPT_NAME="YazFi"
-readonly SCRIPT_CONF="/jffs/addons/$SCRIPT_NAME.d/config"
 readonly YAZFI_VERSION="v4.4.13"
 readonly SCRIPT_VERSION="v4.4.13"
-readonly SCRIPT_VERSTAG="26082318"
+readonly SCRIPT_VERSTAG="26090600"
 SCRIPT_BRANCH="develop"
-SCRIPT_REPO="https://raw.githubusercontent.com/AMTM-OSR/$SCRIPT_NAME/$SCRIPT_BRANCH"
-readonly SCRIPT_DIR="/jffs/addons/$SCRIPT_NAME.d"
-readonly USER_SCRIPT_DIR="$SCRIPT_DIR/userscripts.d"
+SCRIPT_REPO="https://raw.githubusercontent.com/AMTM-OSR/${SCRIPT_NAME}/$SCRIPT_BRANCH"
+
+readonly TEMP_DIR="/tmp/var/tmp"
+readonly JFFS_ADDONS="/jffs/addons"
+readonly JFFS_SCRIPTS="/jffs/scripts"
+readonly SCRIPT_DIR="${JFFS_ADDONS}/${SCRIPT_NAME}.d"
+readonly SCRIPT_CONF="${SCRIPT_DIR}/config"
+readonly SCRIPT_FPATH="${JFFS_SCRIPTS}/$SCRIPT_NAME"
+readonly USER_SCRIPT_DIR="${SCRIPT_DIR}/userscripts.d"
 readonly SCRIPT_WEBPAGE_DIR="$(readlink -f /www/user)"
-readonly SCRIPT_WEB_DIR="$SCRIPT_WEBPAGE_DIR/$SCRIPT_NAME"
-readonly SHARED_DIR="/jffs/addons/shared-jy"
+readonly SCRIPT_WEB_DIR="${SCRIPT_WEBPAGE_DIR}/$SCRIPT_NAME"
+readonly SHARED_DIR="${JFFS_ADDONS}/shared-jy"
 readonly SHARED_REPO="https://raw.githubusercontent.com/AMTM-OSR/shared-jy/master"
-readonly SHARED_WEB_DIR="$SCRIPT_WEBPAGE_DIR/shared-jy"
+readonly SHARED_WEB_DIR="${SCRIPT_WEBPAGE_DIR}/shared-jy"
 readonly TEMP_MENU_TREE="/tmp/menuTree.js"
 
 # Optional integration with the native ASUS Network Map client list #
 readonly NETWORKMAP_TARGET_JS="/www/client_function.js"
-readonly NETWORKMAP_SOURCE_JS="$SCRIPT_DIR/YazFi_networkmap.js"
+readonly NETWORKMAP_SOURCE_JS="${SCRIPT_DIR}/YazFi_networkmap.js"
 readonly NETWORKMAP_JSON="$SCRIPT_WEB_DIR/networkmap_clients.json"
 readonly NETWORKMAP_PIDFILE="/tmp/YazFi-networkmap.pid"
 readonly NETWORKMAP_PATCH_JS="/tmp/YazFi-client_function.js"
@@ -72,14 +77,15 @@ readonly ERR="\e[31m"
 readonly WARN="\e[33m"
 readonly PASS="\e[32m"
 readonly BOLD="\e[1m"
-readonly SETTING="${BOLD}\e[36m"
 readonly CLEARFORMAT="\e[0m"
 readonly CLRct="\e[0m"
 readonly REDct="\e[1;31m"
 readonly GRNct="\e[1;32m"
 readonly MGNTct="\e[1;35m"
+readonly CYANct="\e[1;36m"
 readonly GRAYct="\e[0;37m"
 readonly GRAYEDct="\e[0;30;47m"
+readonly SETTING="${BOLD}${CYANct}"
 ### End of output format variables ###
 
 ### Start of router environment variables ###
@@ -90,12 +96,95 @@ unset LD_LIBRARY_PATH
 # Give higher priority to built-in binaries #
 export PATH="/bin:/usr/bin:/sbin:/usr/sbin:$PATH"
 
+if [ -t 0 ] && ! tty | grep -qwi "NOT"
+then readonly isInteractive=true
+else readonly isInteractive=false
+fi
+
+tempNVRAMvalueFPath="${TEMP_DIR}/nvramValue_${SCRIPT_NAME}_$$.TMP.TXT"
+
+##-------------------------------------##
+## Added by Martinski W. [2026-Sep-05] ##
+##-------------------------------------##
+_PrintMsg_()
+{ "$isInteractive" && printf "$1" ; }
+
+##----------------------------------------##
+## Modified by Martinski W. [2026-Sep-05] ##
+##----------------------------------------##
+# $1 = print to syslog, $2 = message to print, $3 = log level
+Print_Output()
+{
+	local prioStr  prioNum
+	if [ $# -gt 2 ] && [ -n "$3" ]
+	then prioStr="$3"
+	else prioStr="NOTICE"
+	fi
+	if [ "$1" = "true" ] || [ "$1" = "LogOnly" ]
+	then
+		case "$prioStr" in
+		    "$CRIT") prioNum=2 ;;
+		     "$ERR") prioNum=3 ;;
+		    "$WARN") prioNum=4 ;;
+		    "$PASS") prioNum=6 ;; #INFO#
+		          *) prioNum=5 ;; #NOTICE#
+		esac
+		logger -t "${SCRIPT_NAME}_[$$]" -p $prioNum "$2"
+	fi
+	if "$isInteractive" && [ "$1" != "LogOnly" ]
+	then printf "${BOLD}${3}%s${CLRct}\n\n" "$2"
+    fi
+}
+
+##-------------------------------------##
+## Added by Martinski W. [2026-Sep-05] ##
+##-------------------------------------##
+_NVRAM_Get_()
+{
+   local nvramProcID  nvramProcOK=false  retCode=1
+   local waitUSleep=1000  waitFactorX=1000  waitSecsMAX=4
+   local sleepCountNUM=0  sleepCountMAX="$((waitSecsMAX * waitFactorX))"
+   local logMsgStr  nvramKeyValue=""
+
+   printf '' > "$tempNVRAMvalueFPath"
+   nvram get "$1" > "$tempNVRAMvalueFPath" &  nvramProcID="$!"
+
+   while true
+   do
+       usleep "$waitUSleep"
+       sleepCountNUM="$((sleepCountNUM + 1))"
+       if ! kill -EXIT "$nvramProcID" 2>/dev/null
+       then nvramProcOK=true ; break
+       fi
+       if [ "$sleepCountNUM" -ge "$sleepCountMAX" ]
+       then break
+       fi
+   done
+
+   if kill -EXIT "$nvramProcID" 2>/dev/null
+   then
+       nvramProcOK=false
+       kill -9 "$nvramProcID"
+       logMsgStr="**ALERT**: Wait timeout [$waitSecsMAX secs] for 'nvram get $1' command expired."
+       Print_Output true "$logMsgStr" "$ERR"
+   fi
+   if "$nvramProcOK" && [ -s "$tempNVRAMvalueFPath" ]
+   then
+       nvramKeyValue="$(cat "$tempNVRAMvalueFPath")"
+       retCode=0
+   fi
+
+   rm -f "$tempNVRAMvalueFPath"
+   echo "$nvramKeyValue"
+   return "$retCode"
+}
+
 ##----------------------------------------##
 ## Modified by Martinski W. [2024-Jun-23] ##
 ##----------------------------------------##
-readonly LAN_IPaddr="$(nvram get lan_ipaddr)"
-readonly LAN_IFname="$(nvram get lan_ifname)"
-[ -z "$(nvram get odmpid)" ] && ROUTER_MODEL="$(nvram get productid)" || ROUTER_MODEL="$(nvram get odmpid)"
+readonly LAN_IPaddr="$(_NVRAM_Get_ lan_ipaddr)"
+readonly LAN_IFname="$(_NVRAM_Get_ lan_ifname)"
+[ -z "$(_NVRAM_Get_ odmpid)" ] && ROUTER_MODEL="$(_NVRAM_Get_ productid)" || ROUTER_MODEL="$(_NVRAM_Get_ odmpid)"
 ROUTER_MODEL="$(echo "$ROUTER_MODEL" | tr 'a-z' 'A-Z')"
 
 ##-------------------------------------##
@@ -109,14 +198,18 @@ readonly branchxStr_TAG="[Branch: $SCRIPT_BRANCH]"
 readonly versionDev_TAG="${SCRIPT_VERSION}_${SCRIPT_VERSTAG}"
 readonly versionMod_TAG="$SCRIPT_VERSION on $ROUTER_MODEL"
 
+readonly curlHTTPstatusStr="HTTP_Status_Code"
+readonly curlTmpLogFile="${TEMP_DIR}/tmpCurl_${SCRIPT_NAME}_$$.TMP.LOG"
+readonly curlErrLogFile="${TEMP_DIR}/tmpCurl_${SCRIPT_NAME}_$$.ERR.LOG"
+
 # To support automatic script updates from AMTM #
 doScriptUpdateFromAMTM=true
 
 ##-------------------------------------##
 ## Added by Martinski W. [2025-Mar-16] ##
 ##-------------------------------------##
-readonly fwInstalledBaseVers="$(nvram get firmver | sed 's/\.//g')"
-readonly fwInstalledBuildVers="$(nvram get buildno)"
+readonly fwInstalledBaseVers="$(_NVRAM_Get_ firmver | sed 's/\.//g')"
+readonly fwInstalledBuildVers="$(_NVRAM_Get_ buildno)"
 readonly fwInstalledBranchVer="${fwInstalledBaseVers}.${fwInstalledBuildVers}"
 
 # MAC addresses #
@@ -131,7 +224,7 @@ _GetWiFiVirtualInterfaceNames_()
 
    for wifiPrefix in wl0 wl1 wl2 wl3
    do
-       wifiNames="$(nvram get "${wifiPrefix}_vifnames")"
+       wifiNames="$(_NVRAM_Get_ "${wifiPrefix}_vifnames")"
        [ -z "$wifiNames" ] && continue
        wifiNameList="${wifiNameList:+$wifiNameList }$wifiNames"
    done
@@ -197,7 +290,7 @@ readonly InfiniteLeaseTimeVal="infinite"
 ##----------------------------------------##
 ## Modified by Martinski W. [2024-Jun-23] ##
 ##----------------------------------------##
-readonly SUPPORTstr="$(nvram get rc_support)"
+readonly SUPPORTstr="$(_NVRAM_Get_ rc_support)"
 
 Band_24G_Support=false
 Band_5G_1_Support=false
@@ -222,7 +315,7 @@ _GetWiFiBandsSupported_()
    local wifiIFNameList  wifiIFName  wifiBandInfo  wifiBandName
    local wifi5GHzCount=0  wifi6GHzCount=0  wifiRadioStatus
 
-   wifiIFNameList="$(nvram get wl_ifnames)"
+   wifiIFNameList="$(_NVRAM_Get_ wl_ifnames)"
    if [ -z "$wifiIFNameList" ]
    then
        printf "\n**ERROR**: WiFi Interface List is *NOT* found.\n"
@@ -267,37 +360,13 @@ _GetWiFiBandsSupported_()
 
 _GetWiFiBandsSupported_
 
-##----------------------------------------##
-## Modified by Martinski W. [2025-Mar-16] ##
-##----------------------------------------##
-# $1 = print to syslog, $2 = message to print, $3 = log level
-Print_Output()
-{
-	local prioStr  prioNum
-	if [ $# -gt 2 ] && [ -n "$3" ]
-	then prioStr="$3"
-	else prioStr="NOTICE"
-	fi
-	if [ "$1" = "true" ]
-	then
-		case "$prioStr" in
-		    "$CRIT") prioNum=2 ;;
-		     "$ERR") prioNum=3 ;;
-		    "$WARN") prioNum=4 ;;
-		    "$PASS") prioNum=6 ;; #INFO#
-		          *) prioNum=5 ;; #NOTICE#
-		esac
-		logger -t "${SCRIPT_NAME}_[$$]" -p $prioNum "$2"
-	fi
-	printf "${BOLD}${3}%s${CLRct}\n\n" "$2"
-}
-
 Generate_Random_String()
 {
 	PASSLENGTH=16
 	if Validate_Number '' "$1" silent
 	then
-		if [ "$1" -le 32 ] && [ "$1" -ge 8 ]; then
+		if [ "$1" -le 32 ] && [ "$1" -ge 8 ]
+		then
 			PASSLENGTH="$1"
 		else
 			printf "${BOLD}Number is not between 8 and 32, using default of 16 characters${CLRct}\n"
@@ -305,7 +374,6 @@ Generate_Random_String()
 	else
 		printf "${BOLD}Invalid number provided, using default of 16 characters${CLRct}\n"
 	fi
-
 	< /dev/urandom tr -cd 'A-Za-z0-9' | head -c "$PASSLENGTH"
 }
 
@@ -435,7 +503,7 @@ Iface_Manage()
 {
 	case $1 in
 		create)
-			ifconfig "$2" "$(eval echo '$'"$(Get_Iface_Var "$2")"_IPADDR | cut -f1-3 -d".").$(nvram get lan_ipaddr | cut -f4 -d".")" netmask 255.255.255.0
+			ifconfig "$2" "$(eval echo '$'"$(Get_Iface_Var "$2")"_IPADDR | cut -f1-3 -d".").$(echo "$LAN_IPaddr" | cut -f4 -d".")" netmask 255.255.255.0
 		;;
 		delete)
 			ifconfig "$2" 0.0.0.0
@@ -603,7 +671,7 @@ Auto_Startup()
 			if [ -s /jffs/scripts/firewall-start ]
 			then
 				STARTUPLINECOUNT="$(grep -c '# '"$SCRIPT_NAME"' Guest Networks' /jffs/scripts/firewall-start)"
-				STARTUPLINECOUNTEX="$(grep -cx "/jffs/scripts/$SCRIPT_NAME runnow & # $SCRIPT_NAME Guest Networks" /jffs/scripts/firewall-start)"
+				STARTUPLINECOUNTEX="$(grep -cx "$SCRIPT_FPATH runnow & # $SCRIPT_NAME Guest Networks" /jffs/scripts/firewall-start)"
 
 				if [ "$STARTUPLINECOUNT" -gt 1 ] || { [ "$STARTUPLINECOUNTEX" -eq 0 ] && [ "$STARTUPLINECOUNT" -gt 0 ]; }
 				then
@@ -611,12 +679,12 @@ Auto_Startup()
 				fi
 				if [ "$STARTUPLINECOUNTEX" -eq 0 ]
 				then
-					echo "/jffs/scripts/$SCRIPT_NAME runnow & # $SCRIPT_NAME Guest Networks" >> /jffs/scripts/firewall-start
+					echo "$SCRIPT_FPATH runnow & # $SCRIPT_NAME Guest Networks" >> /jffs/scripts/firewall-start
 				fi
 			else
 				echo "#!/bin/sh" > /jffs/scripts/firewall-start
 				echo >> /jffs/scripts/firewall-start
-				echo "/jffs/scripts/$SCRIPT_NAME runnow & # $SCRIPT_NAME Guest Networks" >> /jffs/scripts/firewall-start
+				echo "$SCRIPT_FPATH runnow & # $SCRIPT_NAME Guest Networks" >> /jffs/scripts/firewall-start
 			fi
 			chmod 0755 /jffs/scripts/firewall-start
 		;;
@@ -723,7 +791,7 @@ Auto_ServiceStart()
 			if [ -s /jffs/scripts/services-start ]
 			then
 				STARTUPLINECOUNT="$(grep -c '# '"$SCRIPT_NAME" /jffs/scripts/services-start)"
-				STARTUPLINECOUNTEX="$(grep -cx "/jffs/scripts/$SCRIPT_NAME startup & # $SCRIPT_NAME" /jffs/scripts/services-start)"
+				STARTUPLINECOUNTEX="$(grep -cx "$SCRIPT_FPATH startup & # $SCRIPT_NAME" /jffs/scripts/services-start)"
 
 				if [ "$STARTUPLINECOUNT" -gt 1 ] || { [ "$STARTUPLINECOUNTEX" -eq 0 ] && [ "$STARTUPLINECOUNT" -gt 0 ]; }
 				then
@@ -731,12 +799,12 @@ Auto_ServiceStart()
 				fi
 				if [ "$STARTUPLINECOUNTEX" -eq 0 ]
 				then
-					echo "/jffs/scripts/$SCRIPT_NAME startup & # $SCRIPT_NAME" >> /jffs/scripts/services-start
+					echo "$SCRIPT_FPATH startup & # $SCRIPT_NAME" >> /jffs/scripts/services-start
 				fi
 			else
 				echo "#!/bin/sh" > /jffs/scripts/services-start
 				echo >> /jffs/scripts/services-start
-				echo "/jffs/scripts/$SCRIPT_NAME startup & # $SCRIPT_NAME" >> /jffs/scripts/services-start
+				echo "$SCRIPT_FPATH startup & # $SCRIPT_NAME" >> /jffs/scripts/services-start
 			fi
 			chmod 0755 /jffs/scripts/services-start
 		;;
@@ -763,7 +831,7 @@ Auto_OpenVPNEvent()
 			if [ -s /jffs/scripts/openvpn-event ]
 			then
 				STARTUPLINECOUNT="$(grep -c '# '"$SCRIPT_NAME" /jffs/scripts/openvpn-event)"
-				STARTUPLINECOUNTEX="$(grep -cx "/jffs/scripts/$SCRIPT_NAME openvpn "'$1 $script_type & # '"$SCRIPT_NAME" /jffs/scripts/openvpn-event)"
+				STARTUPLINECOUNTEX="$(grep -cx "$SCRIPT_FPATH openvpn "'$1 $script_type & # '"$SCRIPT_NAME" /jffs/scripts/openvpn-event)"
 
 				if [ "$STARTUPLINECOUNT" -gt 1 ] || { [ "$STARTUPLINECOUNTEX" -eq 0 ] && [ "$STARTUPLINECOUNT" -gt 0 ]; }
 				then
@@ -776,7 +844,7 @@ Auto_OpenVPNEvent()
 			else
 				echo "#!/bin/sh" > /jffs/scripts/openvpn-event
 				echo >> /jffs/scripts/openvpn-event
-				echo "/jffs/scripts/$SCRIPT_NAME openvpn "'$1 $script_type & # '"$SCRIPT_NAME" >> /jffs/scripts/openvpn-event
+				echo "$SCRIPT_FPATH openvpn "'$1 $script_type & # '"$SCRIPT_NAME" >> /jffs/scripts/openvpn-event
 			fi
 			chmod 0755 /jffs/scripts/openvpn-event
 		;;
@@ -800,7 +868,7 @@ Auto_Cron()
 			STARTUPLINECOUNT="$(cru l | grep -c "$SCRIPT_NAME")"
 			if [ "$STARTUPLINECOUNT" -eq 0 ]
 			then
-				cru a "$SCRIPT_NAME" "*/10 * * * * /jffs/scripts/$SCRIPT_NAME check"
+				cru a "$SCRIPT_NAME" "*/10 * * * * $SCRIPT_FPATH check"
 			fi
 		;;
 		delete)
@@ -879,7 +947,7 @@ _Firmware_Support_Check_()
 	then
 		Print_Output true "John's fork detected - service-event requires 374.43_32D6j9527 or later" "$WARN"
 		Print_Output true "Please update to benefit from $SCRIPT_NAME detecting wireless restarts" "$WARN"
-	elif [ "$fwInstalledBaseVers" -eq 3006 ]
+	elif [ "$fwInstalledBaseVers" -ge 3006 ]
 	then
 		FW_NOT_Supported=true ; echo
 		Print_Output true "F/W ${fwInstalledBranchVer}.* version detected. YazFi is NOT supported on this firmware." "$ERR"
@@ -891,12 +959,17 @@ _Firmware_Support_Check_()
 	fi
 }
 
-Firmware_Version_WebUI()
+##----------------------------------------##
+## Modified by Martinski W. [2026-Sep-05] ##
+##----------------------------------------##
+_Firmware_Version_WebUI_()
 {
-	if nvram get rc_support | grep -qF "am_addons"
+	if _NVRAM_Get_ rc_support | grep -qF 'am_addons'
 	then return 0
-	else return 1
 	fi
+	Print_Output true "Unsupported firmware version detected" "$ERR"
+	Print_Output true "WebUI is supported only on firmware versions with add-on support" "$ERR"
+	return 1
 }
 
 ### Code for these functions inspired by https://github.com/Adamm00 - credit to @Adamm ###
@@ -937,7 +1010,7 @@ Clear_Lock()
 ##----------------------------------------##
 Set_Version_Custom_Settings()
 {
-	SETTINGSFILE="/jffs/addons/custom_settings.txt"
+	SETTINGSFILE="${JFFS_ADDONS}/custom_settings.txt"
 	case "$1" in
 		local)
 			if [ -f "$SETTINGSFILE" ]
@@ -981,17 +1054,17 @@ Update_Check()
 {
 	echo 'var updatestatus = "InProgress";' > "$SCRIPT_WEB_DIR/detect_update.js"
 	doupdate="false"
-	localver="$(grep "SCRIPT_VERSION=" "/jffs/scripts/$SCRIPT_NAME" | grep -m1 -oE "$scriptVersRegExp")"
-	curl -fsL --retry 4 --retry-delay 5 "$SCRIPT_REPO/$SCRIPT_NAME.sh" | grep -qF "jackyaz" || \
+	localver="$(grep 'SCRIPT_VERSION=' "$SCRIPT_FPATH" | grep -m1 -oE "$scriptVersRegExp")"
+	curl -fsL --retry 4 --retry-delay 5 "$SCRIPT_REPO/$SCRIPT_NAME.sh" | grep -qwF 'jackyaz' || \
 	{ Print_Output true "404 error detected - stopping update" "$ERR"; return 1; }
-	serverver="$(curl -fsL --retry 4 --retry-delay 5 "$SCRIPT_REPO/$SCRIPT_NAME.sh" | grep "SCRIPT_VERSION=" | grep -m1 -oE "$scriptVersRegExp")"
+	serverver="$(curl -fsL --retry 4 --retry-delay 5 "$SCRIPT_REPO/$SCRIPT_NAME.sh" | grep 'SCRIPT_VERSION=' | grep -m1 -oE "$scriptVersRegExp")"
 	if [ "$localver" != "$serverver" ]
 	then
 		doupdate="version"
 		Set_Version_Custom_Settings server "$serverver"
 		echo 'var updatestatus = "'"$serverver"'";'  > "$SCRIPT_WEB_DIR/detect_update.js"
 	else
-		localmd5="$(md5sum "/jffs/scripts/$SCRIPT_NAME" | awk '{print $1}')"
+		localmd5="$(md5sum "$SCRIPT_FPATH" | awk '{print $1}')"
 		remotemd5="$(curl -fsL --retry 4 --retry-delay 5 "$SCRIPT_REPO/$SCRIPT_NAME.sh" | md5sum | awk '{print $1}')"
 		if [ "$localmd5" != "$remotemd5" ]
 		then
@@ -1000,15 +1073,16 @@ Update_Check()
 			echo 'var updatestatus = "'"$serverver-hotfix"'";'  > "$SCRIPT_WEB_DIR/detect_update.js"
 		fi
 	fi
-	if [ "$doupdate" = "false" ]; then
+	if [ "$doupdate" = "false" ]
+	then
 		echo 'var updatestatus = "None";'  > "$SCRIPT_WEB_DIR/detect_update.js"
 	fi
 	echo "$doupdate,$localver,$serverver"
 }
 
-##------------------------------------------##
-## Modified by ExtremeFiretop [2026-Jul-02] ##
-##------------------------------------------##
+##----------------------------------------##
+## Modified by Martinski W. [2026-Sep-05] ##
+##----------------------------------------##
 Update_Version()
 {
 	if [ $# -eq 0 ] || [ -z "$1" ]
@@ -1032,26 +1106,20 @@ Update_Version()
 			read -r confirm
 			case "$confirm" in
 				y|Y)
-					if Firmware_Version_WebUI
-					then
-						Update_File shared-jy.tar.gz
-						Update_File YazFi_www.asp
-						Update_File YazFi_networkmap.js
-					else
-						Print_Output true "WebUI is only supported on firmware versions with addon support" "$WARN"
-					fi
-
+					Update_File shared-jy.tar.gz
+					Update_File YazFi_www.asp
+					Update_File YazFi_networkmap.js
 					Update_File README.md
 					Update_File LICENSE
-
-					##-------------------------------------##
-					## Added by Martinski W. [2022-Dec-26] ##
-					##-------------------------------------##
 					Update_File "$SCRIPT_CONF"
 
-					Download_File "$SCRIPT_REPO/$SCRIPT_NAME.sh" "/jffs/scripts/$SCRIPT_NAME" && \
+					if ! Download_File "$SCRIPT_REPO" "${SCRIPT_NAME}.sh" "$SCRIPT_FPATH"
+					then
+						Print_Output true "$SCRIPT_NAME script file was NOT updated. Download failed." "$ERR"
+						Clear_Lock ; return 1
+					fi
 					Print_Output true "$SCRIPT_NAME successfully updated - restarting firewall to apply update" "$PASS"
-					chmod 0755 "/jffs/scripts/$SCRIPT_NAME"
+					chmod 755 "$SCRIPT_FPATH"
 					Set_Version_Custom_Settings local "$serverver"
 					Set_Version_Custom_Settings server "$serverver"
 					Clear_Lock
@@ -1074,27 +1142,23 @@ Update_Version()
 
 	if [ "$1" = "force" ]
 	then
-		serverver="$(curl -fsL --retry 4 --retry-delay 5 "$SCRIPT_REPO/$SCRIPT_NAME.sh" | grep "SCRIPT_VERSION=" | grep -m1 -oE "$scriptVersRegExp")"
+		serverver="$(curl -fsL --retry 4 --retry-delay 5 "$SCRIPT_REPO/$SCRIPT_NAME.sh" | grep 'SCRIPT_VERSION=' | grep -m1 -oE "$scriptVersRegExp")"
 		Print_Output true "Downloading latest version ($serverver) of $SCRIPT_NAME" "$PASS"
-		if Firmware_Version_WebUI
-		then
-			Update_File shared-jy.tar.gz
-			Update_File YazFi_www.asp
-			Update_File YazFi_networkmap.js
-		else
-			Print_Output true "WebUI is only supported on firmware versions with addon support" "$WARN"
-		fi
+
+		Update_File shared-jy.tar.gz
+		Update_File YazFi_www.asp
+		Update_File YazFi_networkmap.js
 		Update_File README.md
 		Update_File LICENSE
-
-		##-------------------------------------##
-		## Added by Martinski W. [2022-Dec-26] ##
-		##-------------------------------------##
 		Update_File "$SCRIPT_CONF"
 
-		Download_File "$SCRIPT_REPO/$SCRIPT_NAME.sh" "/jffs/scripts/$SCRIPT_NAME" && \
+		if ! Download_File "$SCRIPT_REPO" "${SCRIPT_NAME}.sh" "$SCRIPT_FPATH"
+		then
+			Print_Output true "$SCRIPT_NAME script file was NOT updated. Download failed." "$ERR"
+			Clear_Lock ; return 1
+		fi
         Print_Output true "$SCRIPT_NAME successfully updated - restarting firewall to apply update" "$PASS"
-		chmod 0755 "/jffs/scripts/$SCRIPT_NAME"
+		chmod 755 "$SCRIPT_FPATH"
 		Set_Version_Custom_Settings local "$serverver"
 		Set_Version_Custom_Settings server "$serverver"
 		Clear_Lock
@@ -1128,101 +1192,98 @@ ScriptUpdateFromAMTM()
     return "$?"
 }
 
-##------------------------------------------##
-## Modified by ExtremeFiretop [2026-Aug-23] ##
-##------------------------------------------##
+##----------------------------------------##
+## Modified by Martinski W. [2026-Sep-05] ##
+##----------------------------------------##
 Update_File()
 {
 	if [ "$1" = "YazFi_www.asp" ]
 	then
-		tmpfile="/tmp/$1"
-		if [ -s "$SCRIPT_DIR/$1" ]
+		tmpfile="/tmp/$1" ; rm -f "$tmpfile"
+		if [ -s "${SCRIPT_DIR}/$1" ]
 		then
-			Download_File "$SCRIPT_REPO/$1" "$tmpfile"
-			if ! diff -q "$tmpfile" "$SCRIPT_DIR/$1" >/dev/null 2>&1
+			if ! Download_File "$SCRIPT_REPO" "$1" "$tmpfile"
 			then
-				Get_WebUI_Page "$SCRIPT_DIR/$1"
+				Print_Output true "The WebUI file [$1] was NOT updated. Download failed." "$ERR"
+				return 1
+			fi
+			if ! diff -q "$tmpfile" "${SCRIPT_DIR}/$1" >/dev/null 2>&1
+			then
+				Get_WebUI_Page "${SCRIPT_DIR}/$1"
 				sed -i "\\~$MyWebPage~d" "$TEMP_MENU_TREE"
-				rm -f "$SCRIPT_WEBPAGE_DIR/$MyWebPage" 2>/dev/null
-				Download_File "$SCRIPT_REPO/$1" "$SCRIPT_DIR/$1"
+				rm -f "${SCRIPT_WEBPAGE_DIR}/$MyWebPage" 2>/dev/null
+				mv -f "$tmpfile" "${SCRIPT_DIR}/$1"
+				chmod 644 "${SCRIPT_DIR}/$1"
 				Print_Output true "New version of $1 downloaded" "$PASS"
 				Mount_WebUI
 			fi
 			rm -f "$tmpfile"
 		else
-			Download_File "$SCRIPT_REPO/$1" "$SCRIPT_DIR/$1"
+			if ! Download_File "$SCRIPT_REPO" "$1" "${SCRIPT_DIR}/$1"
+			then
+				Print_Output true "The WebUI file [$1] was NOT updated. Download failed." "$ERR"
+				return 1
+			fi
 			Print_Output true "New version of $1 downloaded" "$PASS"
 			Mount_WebUI
 		fi
 	elif [ "$1" = "shared-jy.tar.gz" ]
 	then
-		if [ ! -f "$SHARED_DIR/$1.md5" ]
+		if [ ! -s "${SHARED_DIR}/${1}.md5" ]
 		then
-			Download_File "$SHARED_REPO/$1" "$SHARED_DIR/$1"
-			Download_File "$SHARED_REPO/$1.md5" "$SHARED_DIR/$1.md5"
-			tar -xzf "$SHARED_DIR/$1" -C "$SHARED_DIR"
-			rm -f "$SHARED_DIR/$1"
+			Download_File "$SHARED_REPO" "$1" "${SHARED_DIR}/$1"
+			Download_File "$SHARED_REPO" "${1}.md5" "${SHARED_DIR}/${1}.md5"
+			tar -xzf "${SHARED_DIR}/$1" -C "$SHARED_DIR"
+			rm -f "${SHARED_DIR}/$1"
 			Print_Output true "New version of $1 downloaded" "$PASS"
 		else
-			localmd5="$(cat "$SHARED_DIR/$1.md5")"
-			remotemd5="$(curl -fsL --retry 4 --retry-delay 5 "$SHARED_REPO/$1.md5")"
+			localmd5="$(cat "${SHARED_DIR}/${1}.md5")"
+			remotemd5="$(curl -fsL --retry 4 --retry-delay 5 "${SHARED_REPO}/${1}.md5")"
 			if [ "$localmd5" != "$remotemd5" ]
 			then
-				Download_File "$SHARED_REPO/$1" "$SHARED_DIR/$1"
-				Download_File "$SHARED_REPO/$1.md5" "$SHARED_DIR/$1.md5"
-				tar -xzf "$SHARED_DIR/$1" -C "$SHARED_DIR"
-				rm -f "$SHARED_DIR/$1"
+				Download_File "$SHARED_REPO" "$1" "${SHARED_DIR}/$1"
+				Download_File "$SHARED_REPO" "${1}.md5" "${SHARED_DIR}/${1}.md5"
+				tar -xzf "${SHARED_DIR}/$1" -C "$SHARED_DIR"
+				rm -f "${SHARED_DIR}/$1"
 				Print_Output true "New version of $1 downloaded" "$PASS"
 			fi
 		fi
 	elif [ "$1" = "YazFi_networkmap.js" ]
 	then
-		tmpfile="/tmp/$1"
-		rm -f "$tmpfile"
-
-		if ! Download_File "$SCRIPT_REPO/$1" "$tmpfile"
+		tmpfile="/tmp/$1" ; rm -f "$tmpfile"
+		if ! Download_File "$SCRIPT_REPO" "$1" "$tmpfile"
 		then
-			Print_Output true "Unable to download $1" "$ERR"
-			rm -f "$tmpfile"
+			Print_Output true "The Network Map JS source file [$1] was NOT updated. Download failed." "$ERR"
 			return 1
 		fi
-
-		if [ ! -s "$tmpfile" ]
-		then
-			Print_Output true "Downloaded $1 is missing or empty" "$ERR"
-			rm -f "$tmpfile"
-			return 1
-		fi
-
 		if ! grep -qF "$NETWORKMAP_MARKER" "$tmpfile"
 		then
 			Print_Output true "Downloaded $1 failed validation" "$ERR"
 			rm -f "$tmpfile"
 			return 1
 		fi
-
-		if [ ! -s "$SCRIPT_DIR/$1" ]
+		if [ ! -s "${SCRIPT_DIR}/$1" ]
 		then
-			mv -f "$tmpfile" "$SCRIPT_DIR/$1"
-			chmod 0644 "$SCRIPT_DIR/$1"
-			Print_Output true "$1 downloaded" "$PASS"
-			NetworkMap_WebUI remount 2>/dev/null
-		elif ! diff -q "$tmpfile" "$SCRIPT_DIR/$1" >/dev/null 2>&1
-		then
-			mv -f "$tmpfile" "$SCRIPT_DIR/$1"
-			chmod 0644 "$SCRIPT_DIR/$1"
+			mv -f "$tmpfile" "${SCRIPT_DIR}/$1"
+			chmod 644 "${SCRIPT_DIR}/$1"
 			Print_Output true "New version of $1 downloaded" "$PASS"
+			NetworkMap_WebUI remount 2>/dev/null
+		elif ! diff -q "$tmpfile" "${SCRIPT_DIR}/$1" >/dev/null 2>&1
+		then
+			mv -f "$tmpfile" "${SCRIPT_DIR}/$1"
+			chmod 644 "${SCRIPT_DIR}/$1"
+			Print_Output true "Latest version of $1 downloaded" "$PASS"
 			NetworkMap_WebUI remount 2>/dev/null
 		else
 			rm -f "$tmpfile"
 		fi
 	elif [ "$1" = "README.md" ] || [ "$1" = "LICENSE" ]
 	then
-		tmpfile="/tmp/$1"
-		Download_File "$SCRIPT_REPO/$1" "$tmpfile"
-		if ! diff -q "$tmpfile" "$SCRIPT_DIR/$1" >/dev/null 2>&1
+		tmpfile="/tmp/$1" ; rm -f "$tmpfile"
+		if Download_File "$SCRIPT_REPO" "$1" "$tmpfile" && \
+		   ! diff -q "$tmpfile" "${SCRIPT_DIR}/$1" >/dev/null 2>&1
 		then
-			Download_File "$SCRIPT_REPO/$1" "$SCRIPT_DIR/$1"
+			mv -f "$tmpfile" "${SCRIPT_DIR}/$1"
 		fi
 		rm -f "$tmpfile"
 	elif [ "$1" = "$SCRIPT_CONF" ]
@@ -1235,7 +1296,7 @@ Update_File()
 				cp -fp "$SCRIPT_CONF" "${SCRIPT_CONF}.bak"
 				rm -f "${SCRIPT_CONF}.ADD.txt"
 			else
-				Print_Output true "Could not update configuration file: $SCRIPT_CONF" "$ERR"
+				Print_Output true "Could NOT update configuration file: $SCRIPT_CONF" "$ERR"
 			fi
 		fi
 	else
@@ -1258,10 +1319,10 @@ IP_Local()
 
 IP_Router()
 {
-	if [ "$1" = "$(nvram get lan_ipaddr)" ] || [ "$1" = "127.0.0.1" ]
+	if [ "$1" = "$LAN_IPaddr" ] || [ "$1" = "127.0.0.1" ]
 	then
 		return 0
-	elif [ "$1" = "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(nvram get lan_ipaddr | cut -f4 -d".")" ]
+	elif [ "$1" = "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(echo "$LAN_IPaddr" | cut -f4 -d".")" ]
 	then
 		return 0
 	else
@@ -1274,7 +1335,7 @@ IP_Router()
 ##----------------------------------------##
 Validate_IFACE_Enabled()
 {
-	IFACE_TEST="$(nvram get "${1}_bss_enabled")"
+	IFACE_TEST="$(_NVRAM_Get_ "${1}_bss_enabled")"
 	if ! Validate_Number '' "$IFACE_TEST" silent
 	then IFACE_TEST=0
 	fi
@@ -1477,7 +1538,7 @@ Validate_String()
 ##----------------------------------------##
 Conf_FromSettings()
 {
-	SETTINGSFILE="/jffs/addons/custom_settings.txt"
+	SETTINGSFILE="${JFFS_ADDONS}/custom_settings.txt"
 	TMPFILE="/tmp/yazfi_settings.txt"
 	if [ -f "$SETTINGSFILE" ]
 	then
@@ -1560,7 +1621,7 @@ Conf_FixBlanks()
 		if [ -z "$(eval echo '$'"${IFACETMPBLANK}_DHCPLEASE")" ] || \
 		   ! grep -q "${IFACETMPBLANK}_DHCPLEASE=" "$SCRIPT_CONF"
 		then
-			DHCP_LEASE_VAL="$(nvram get dhcp_lease)"
+			DHCP_LEASE_VAL="$(_NVRAM_Get_ dhcp_lease)"
 			if grep -q "${IFACETMPBLANK}_DHCPLEASE=" "$SCRIPT_CONF"
 			then
 				OUTmsg="is blank, setting to $DHCP_LEASE_VAL seconds"
@@ -1581,11 +1642,11 @@ Conf_FixBlanks()
 		then
 			if [ -n "$(eval echo '$'"${IFACETMPBLANK}_IPADDR")" ]
 			then
-				sed -i -e "s/${IFACETMPBLANK}_DNS1=/${IFACETMPBLANK}_DNS1=$(eval echo '$'"${IFACETMPBLANK}_IPADDR" | cut -f1-3 -d".").$(nvram get lan_ipaddr | cut -f4 -d".")/" "$SCRIPT_CONF"
-				Print_Output false "${IFACETMPBLANK}_DNS1 is blank, setting to $(eval echo '$'"${IFACETMPBLANK}_IPADDR" | cut -f1-3 -d".").$(nvram get lan_ipaddr | cut -f4 -d".")" "$WARN"
+				sed -i -e "s/${IFACETMPBLANK}_DNS1=/${IFACETMPBLANK}_DNS1=$(eval echo '$'"${IFACETMPBLANK}_IPADDR" | cut -f1-3 -d".").$(echo "$LAN_IPaddr" | cut -f4 -d".")/" "$SCRIPT_CONF"
+				Print_Output false "${IFACETMPBLANK}_DNS1 is blank, setting to $(eval echo '$'"${IFACETMPBLANK}_IPADDR" | cut -f1-3 -d".").$(echo "$LAN_IPaddr" | cut -f4 -d".")" "$WARN"
 			else
-				sed -i -e "s/${IFACETMPBLANK}_DNS1=/${IFACETMPBLANK}_DNS1=$IPADDRTMPBLANK.$(nvram get lan_ipaddr | cut -f4 -d".")/" "$SCRIPT_CONF"
-				Print_Output false "${IFACETMPBLANK}_DNS1 is blank, setting to $IPADDRTMPBLANK.$(nvram get lan_ipaddr | cut -f4 -d".")" "$WARN"
+				sed -i -e "s/${IFACETMPBLANK}_DNS1=/${IFACETMPBLANK}_DNS1=$IPADDRTMPBLANK.$(echo "$LAN_IPaddr" | cut -f4 -d".")/" "$SCRIPT_CONF"
+				Print_Output false "${IFACETMPBLANK}_DNS1 is blank, setting to $IPADDRTMPBLANK.$(echo "$LAN_IPaddr" | cut -f4 -d".")" "$WARN"
 			fi
 		fi
 
@@ -1593,11 +1654,11 @@ Conf_FixBlanks()
 		then
 			if [ -n "$(eval echo '$'"${IFACETMPBLANK}_IPADDR")" ]
 			then
-				sed -i -e "s/${IFACETMPBLANK}_DNS2=/${IFACETMPBLANK}_DNS2=$(eval echo '$'"${IFACETMPBLANK}_IPADDR" | cut -f1-3 -d".").$(nvram get lan_ipaddr | cut -f4 -d".")/" "$SCRIPT_CONF"
-				Print_Output false "${IFACETMPBLANK}_DNS2 is blank, setting to $(eval echo '$'"${IFACETMPBLANK}_IPADDR" | cut -f1-3 -d".").$(nvram get lan_ipaddr | cut -f4 -d".")" "$WARN"
+				sed -i -e "s/${IFACETMPBLANK}_DNS2=/${IFACETMPBLANK}_DNS2=$(eval echo '$'"${IFACETMPBLANK}_IPADDR" | cut -f1-3 -d".").$(echo "$LAN_IPaddr" | cut -f4 -d".")/" "$SCRIPT_CONF"
+				Print_Output false "${IFACETMPBLANK}_DNS2 is blank, setting to $(eval echo '$'"${IFACETMPBLANK}_IPADDR" | cut -f1-3 -d".").$(echo "$LAN_IPaddr" | cut -f4 -d".")" "$WARN"
 			else
-				sed -i -e "s/${IFACETMPBLANK}_DNS2=/${IFACETMPBLANK}_DNS2=$IPADDRTMPBLANK.$(nvram get lan_ipaddr | cut -f4 -d".")/" "$SCRIPT_CONF"
-				Print_Output false "${IFACETMPBLANK}_DNS2 is blank, setting to $IPADDRTMPBLANK.$(nvram get lan_ipaddr | cut -f4 -d".")" "$WARN"
+				sed -i -e "s/${IFACETMPBLANK}_DNS2=/${IFACETMPBLANK}_DNS2=$IPADDRTMPBLANK.$(echo "$LAN_IPaddr" | cut -f4 -d".")/" "$SCRIPT_CONF"
+				Print_Output false "${IFACETMPBLANK}_DNS2 is blank, setting to $IPADDRTMPBLANK.$(echo "$LAN_IPaddr" | cut -f4 -d".")" "$WARN"
 			fi
 		fi
 
@@ -1712,7 +1773,7 @@ Conf_Validate()
 							Print_Output false "${IFACETMP}_IPADDR setting last octet to 0" "$WARN"
 						fi
 
-						if [ "$(ifconfig -a | grep -o "inet addr:$IPADDRTMP.$(nvram get lan_ipaddr | cut -f4 -d'.')"  | sed 's/inet addr://' | wc -l )" -gt 1 ]
+						if [ "$(ifconfig -a | grep -o "inet addr:$IPADDRTMP.$(echo "$LAN_IPaddr" | cut -f4 -d'.')"  | sed 's/inet addr://' | wc -l )" -gt 1 ]
 						then
 							Print_Output false "${IFACETMP}_IPADDR ($(eval echo '$'"${IFACETMP}_IPADDR")) has been used for another interface already" "$ERR"
 							IFACE_PASS=false
@@ -1792,7 +1853,7 @@ Conf_Validate()
 						then
 							IFACE_PASS=false
 						else
-							if [ "$(nvram get vpn_client"$(eval echo '$'"${IFACETMP}_VPNCLIENTNUMBER")"_rgw)" -ne 2 ]
+							if [ "$(_NVRAM_Get_ vpn_client"$(eval echo '$'"${IFACETMP}_VPNCLIENTNUMBER")"_rgw)" -ne 2 ]
 							then
 								Print_Output false "VPN Client $(eval echo '$'"${IFACETMP}_VPNCLIENTNUMBER") is not configured for Policy Routing, enabling it..." "$WARN"
 								nvram set vpn_client"$(eval echo '$'"${IFACETMP}_VPNCLIENTNUMBER")"_rgw=2
@@ -1912,7 +1973,6 @@ EOF_NETWORKMAP_CONFIG
 
 NetworkMap_Config_Enabled()
 {
-	Firmware_Version_WebUI || return 1
 	NetworkMap_Ensure_Config
 	local YAZFI_NETWORKMAP_CLIENTS="false"
 	[ -s "$SCRIPT_CONF" ] && . "$SCRIPT_CONF"
@@ -2060,7 +2120,7 @@ NetworkMap_Generate_JSON()
 	fi
 
 	printf ']\n' >> "$TMPJSON"
-	chmod 0644 "$TMPJSON"
+	chmod 644 "$TMPJSON"
 	mv -f "$TMPJSON" "$NETWORKMAP_JSON"
 }
 
@@ -2078,7 +2138,7 @@ NetworkMap_Daemon()
 			NetworkMap_Config_Enabled || { NetworkMap_Daemon stop; return 0; }
 			NetworkMap_Daemon_Running && return 0
 			rm -f "$NETWORKMAP_PIDFILE"
-			/jffs/scripts/$SCRIPT_NAME networkmap daemon >/dev/null 2>&1 &
+			$SCRIPT_FPATH networkmap daemon >/dev/null 2>&1 &
 			echo "$!" > "$NETWORKMAP_PIDFILE"
 		;;
 		stop)
@@ -2155,7 +2215,7 @@ NetworkMap_WebUI()
 			}
 
 			cat "$NETWORKMAP_SOURCE_JS" >> "$NETWORKMAP_PATCH_JS" || return 1
-			chmod 0644 "$NETWORKMAP_PATCH_JS"
+			chmod 644 "$NETWORKMAP_PATCH_JS"
 			mount -o bind "$NETWORKMAP_PATCH_JS" "$NETWORKMAP_TARGET_JS" || return 1
 			# Restart the daemon so it loads the current YazFi.sh functions #
 			NetworkMap_Daemon stop
@@ -2226,11 +2286,59 @@ NetworkMap_Status()
 	[ -s "$NETWORKMAP_JSON" ] && cat "$NETWORKMAP_JSON"
 }
 
-##------------------------------------------##
-## Modified by ExtremeFiretop [2026-Aug-23] ##
-##------------------------------------------##
+##----------------------------------------##
+## Modified by Martinski W. [2026-Sep-05] ##
+##----------------------------------------##
 Download_File()
-{ /usr/sbin/curl -fLSs --retry 4 --retry-delay 5 --retry-connrefused "$1" -o "$2" ; }
+{
+   if [ $# -lt 3 ] || [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]
+   then return 1
+   fi
+   local srcFilePathURL="${1}/$2"
+   local tempFilePathDL="${TEMP_DIR}/${2}.DL.$$.TMP"
+   local theDestFName="$2"  theDestFPath="$3"
+   local logMsgStr  theMsgStr
+   local curlRetCode  returnCODE  statusSTRx  httpStatusSTR
+
+   rm -f "$tempFilePathDL"
+   printf '' > "$curlErrLogFile"
+   printf '' > "$curlTmpLogFile"
+
+   curl -LSs --retry 3 --retry-delay 5 --retry-connrefused \
+   --connect-timeout 30 --max-time 60 \
+   -w "${curlHTTPstatusStr}: %{http_code}\n" --stderr "$curlErrLogFile" \
+   "$srcFilePathURL" --output "$tempFilePathDL" >> "$curlTmpLogFile"
+   curlRetCode="$?"
+
+   returnCODE="$curlRetCode"
+   statusSTRx="Curl Status Code: $curlRetCode"
+   httpStatusSTR="$(grep -oE "${curlHTTPstatusStr}: [4-5][0-9]{2,}" "$curlTmpLogFile")"
+
+   if [ "$curlRetCode" -eq 0 ] && \
+      [ -z "$httpStatusSTR" ] && [ -s "$tempFilePathDL" ]
+   then
+       mv -f "$tempFilePathDL" "$theDestFPath"
+       dos2unix "$theDestFPath" ; chmod 644 "$theDestFPath"
+   else
+       if [ "$curlRetCode" -eq 0 ] && [ -n "$httpStatusSTR" ]
+       then
+           returnCODE="$(echo "$httpStatusSTR" | awk -F' ' '{print $2}')"
+           statusSTRx="HTTP Status Code: $returnCODE"
+       fi
+       if [ -s "$curlErrLogFile" ] && "$isInteractive"
+       then echo ; cat "$curlErrLogFile"
+       fi
+       logMsgStr="**ERROR**: Unable to download the file [$theDestFName] [${statusSTRx}]"
+       theMsgStr="\n${REDct}**ERROR**${CLRct}: Unable to download the file [$theDestFName] [${MGNTct}${statusSTRx}${CLRct}]\n"
+
+       _PrintMsg_ "$theMsgStr"
+       Print_Output LogOnly "$logMsgStr" "$ERR"
+       rm -f "$tempFilePathDL"
+   fi
+
+   rm -f "$curlErrLogFile" "$curlTmpLogFile"
+   return "$returnCODE"
+}
 
 ### function based on @dave14305's FlexQoS webconfigpage function ###
 ##----------------------------------------##
@@ -2248,18 +2356,18 @@ Get_WebUI_URL()
 
 	urlPage="$(sed -nE "/$SCRIPT_NAME/ s/.*url\: \"(user[0-9]+\.asp)\".*/\1/p" "$TEMP_MENU_TREE")"
 
-	if [ "$(nvram get http_enable)" -eq 1 ]; then
+	if [ "$(_NVRAM_Get_ http_enable)" -eq 1 ]; then
 		urlProto="https"
 	else
 		urlProto="http"
 	fi
-	if [ -n "$(nvram get lan_domain)" ]; then
-		urlDomain="$(nvram get lan_hostname).$(nvram get lan_domain)"
+	if [ -n "$(_NVRAM_Get_ lan_domain)" ]; then
+		urlDomain="$(_NVRAM_Get_ lan_hostname).$(_NVRAM_Get_ lan_domain)"
 	else
-		urlDomain="$(nvram get lan_ipaddr)"
+		urlDomain="$LAN_IPaddr"
 	fi
 
-	lanPort="$(nvram get ${urlProto}_lanport)"
+	lanPort="$(_NVRAM_Get_ ${urlProto}_lanport)"
 	if [ "$lanPort" -eq 80 ] || [ "$lanPort" -eq 443 ]
 	then
 		urlPort=""
@@ -2370,14 +2478,26 @@ _CheckFor_WebGUI_Page_()
    then Mount_WebUI ; fi
 }
 
+##-------------------------------------##
+_CheckFor_NetworkMap_SourceJS_()
+{
+	if [ ! -s "$NETWORKMAP_SOURCE_JS" ]
+	then
+		Print_Output true "Network Map JS source missing - attempting repair" "$WARN"
+		Update_File YazFi_networkmap.js
+	fi
+}
+
+##----------------------------------------##
+## Modified by Martinski W. [2026-Sep-05] ##
+##----------------------------------------##
 Conf_Download()
 {
-	mkdir -p "/jffs/addons/${SCRIPT_NAME}.d"
-	curl -fsL --retry 4 --retry-delay 5 "$SCRIPT_REPO/${SCRIPT_NAME}.config.example" -o "$1"
-	chmod 0644 "$1"
-	_DOStoUNIX_ "$1"
+	mkdir -p "$SCRIPT_DIR"
+	Download_File "$SCRIPT_REPO" "${SCRIPT_NAME}.config.example" "$1"
 	sleep 1
 	Clear_Lock
+	[ -s "$1" ] && return 0 || return 1
 }
 
 ##-------------------------------------##
@@ -2386,9 +2506,7 @@ Conf_Download()
 Conf_ADD_Download()
 {
 	config_ADD="${1}.ADD.txt"
-	curl -fsL --retry 4 --retry-delay 5 "$SCRIPT_REPO/${SCRIPT_NAME}.config.ADD.txt" -o "$config_ADD"
-	chmod 0644 "$config_ADD"
-	_DOStoUNIX_ "$config_ADD"
+	Download_File "$SCRIPT_REPO" "${SCRIPT_NAME}.config.ADD.txt" "$config_ADD"
 	[ -s "$config_ADD" ] && return 0 || return 1
 }
 
@@ -2399,7 +2517,7 @@ Conf_Exists()
 {
 	if [ -s "$SCRIPT_CONF" ]
 	then
-		chmod 0644 "$SCRIPT_CONF"
+		chmod 644 "$SCRIPT_CONF"
 		_DOStoUNIX_ "$SCRIPT_CONF"
 		Update_File "$SCRIPT_CONF"
 
@@ -2672,8 +2790,8 @@ Firewall_Rules()
 		iptables "$ACTION" "$INPT" -i "$IFACE" -p icmp -j ACCEPT
 		iptables "$ACTION" "$INPT" -i "$IFACE" -p udp -m multiport --dports 67,123 -j ACCEPT
 
-		ENABLED_WINS="$(nvram get smbd_wins)"
-		ENABLED_SAMBA="$(nvram get enable_samba)"
+		ENABLED_WINS="$(_NVRAM_Get_ smbd_wins)"
+		ENABLED_SAMBA="$(_NVRAM_Get_ enable_samba)"
 		if ! Validate_Number "" "$ENABLED_SAMBA" silent; then ENABLED_SAMBA=0; fi
 		if ! Validate_Number "" "$ENABLED_WINS" silent; then ENABLED_WINS=0; fi
 
@@ -2929,8 +3047,8 @@ Routing_RPDB()
 		create)
 			if ! ip route show | grep -q "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR")"
 			then
-				ip route del "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".")".0/24 dev "$2" proto kernel src "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(nvram get lan_ipaddr | cut -f4 -d".")"
-				ip route add "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".")".0/24 dev "$2" proto kernel src "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(nvram get lan_ipaddr | cut -f4 -d".")"
+				ip route del "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".")".0/24 dev "$2" proto kernel src "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(echo "$LAN_IPaddr" | cut -f4 -d".")"
+				ip route add "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".")".0/24 dev "$2" proto kernel src "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(echo "$LAN_IPaddr" | cut -f4 -d".")"
 			fi
 			COUNTER=1
 			until [ "$COUNTER" -gt 5 ]
@@ -2939,8 +3057,8 @@ Routing_RPDB()
 				then
 					if ! ip route show table ovpnc"$COUNTER" | grep -q "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR")"
 					then
-						ip route del "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".")".0/24 dev "$2" proto kernel table ovpnc"$COUNTER" src "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(nvram get lan_ipaddr | cut -f4 -d".")"
-						ip route add "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".")".0/24 dev "$2" proto kernel table ovpnc"$COUNTER" src "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(nvram get lan_ipaddr | cut -f4 -d".")"
+						ip route del "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".")".0/24 dev "$2" proto kernel table ovpnc"$COUNTER" src "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(echo "$LAN_IPaddr" | cut -f4 -d".")"
+						ip route add "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".")".0/24 dev "$2" proto kernel table ovpnc"$COUNTER" src "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(echo "$LAN_IPaddr" | cut -f4 -d".")"
 					fi
 				fi
 				COUNTER="$((COUNTER+1))"
@@ -2952,7 +3070,7 @@ Routing_RPDB()
 			do
 				if ifconfig "tun1$COUNTER" >/dev/null 2>&1
 				then
-					ip route del "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".")".0/24 dev "$2" proto kernel table ovpnc"$COUNTER" src "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(nvram get lan_ipaddr | cut -f4 -d".")"
+					ip route del "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".")".0/24 dev "$2" proto kernel table ovpnc"$COUNTER" src "$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(echo "$LAN_IPaddr" | cut -f4 -d".")"
 				fi
 				COUNTER="$((COUNTER+1))"
 			done
@@ -3025,7 +3143,7 @@ Routing_VPNDirector()
 				do
 					if ifconfig "tun1$COUNTER" >/dev/null 2>&1
 					then
-						if [ "$(nvram get vpn_client"$COUNTER"_rgw)" -ne 2 ]
+						if [ "$(_NVRAM_Get_ vpn_client"$COUNTER"_rgw)" -ne 2 ]
 						then
 							nvram set vpn_client"$COUNTER"_rgw=2
 							nvram commit
@@ -3047,7 +3165,7 @@ Routing_NVRAM()
 			COUNTER=1
 			until [ "$COUNTER" -gt 5 ]
 			do
-				eval "VPN_IP_LIST_ORIG_$COUNTER=$(echo "$(nvram get "vpn_client${COUNTER}_clientlist")$(nvram get "vpn_client${COUNTER}_clientlist1")$(nvram get "vpn_client${COUNTER}_clientlist2")$(nvram get "vpn_client${COUNTER}_clientlist3")$(nvram get "vpn_client${COUNTER}_clientlist4")$(nvram get "vpn_client${COUNTER}_clientlist5")" | Escape_Sed)"
+				eval "VPN_IP_LIST_ORIG_$COUNTER=$(echo "$(_NVRAM_Get_ "vpn_client${COUNTER}_clientlist")$(_NVRAM_Get_ "vpn_client${COUNTER}_clientlist1")$(_NVRAM_Get_ "vpn_client${COUNTER}_clientlist2")$(_NVRAM_Get_ "vpn_client${COUNTER}_clientlist3")$(_NVRAM_Get_ "vpn_client${COUNTER}_clientlist4")$(_NVRAM_Get_ "vpn_client${COUNTER}_clientlist5")" | Escape_Sed)"
 				eval "VPN_IP_LIST_NEW_$COUNTER=$(eval echo '$'"VPN_IP_LIST_ORIG_"$COUNTER | Escape_Sed)"
 				COUNTER="$((COUNTER + 1))"
 			done
@@ -3138,7 +3256,7 @@ Routing_NVRAM()
 						nvram set vpn_client"$COUNTER"_clientlist="$(eval echo '$'"VPN_IP_LIST_NEW_$COUNTER")"
 					fi
 
-					if [ "$(nvram get vpn_client"$COUNTER"_rgw)" -ne 2 ]; then
+					if [ "$(_NVRAM_Get_ vpn_client"$COUNTER"_rgw)" -ne 2 ]; then
 						nvram set vpn_client"$COUNTER"_rgw=2
 					fi
 					nvram commit
@@ -3177,8 +3295,8 @@ DHCP_Conf()
 			CONFSTRING=""
 			CONFADDSTRING=""
 
-			ENABLED_WINS="$(nvram get smbd_wins)"
-			ENABLED_SAMBA="$(nvram get enable_samba)"
+			ENABLED_WINS="$(_NVRAM_Get_ smbd_wins)"
+			ENABLED_SAMBA="$(_NVRAM_Get_ enable_samba)"
 			if ! Validate_Number "" "$ENABLED_SAMBA" silent; then ENABLED_SAMBA=0; fi
 			if ! Validate_Number "" "$ENABLED_WINS" silent; then ENABLED_WINS=0; fi
 
@@ -3188,11 +3306,11 @@ DHCP_Conf()
 			fi
 
 			if [ "$ENABLED_WINS" -eq 1 ] && [ "$ENABLED_SAMBA" -eq 1 ]; then
-				CONFADDSTRING="$CONFADDSTRING||||dhcp-option=$2,44,$(nvram get lan_ipaddr)"
+				CONFADDSTRING="$CONFADDSTRING||||dhcp-option=$2,44,$LAN_IPaddr"
 			fi
 
 			if [ "$ENABLED_NTPD" -eq 1 ]; then
-				CONFADDSTRING="$CONFADDSTRING||||dhcp-option=$2,42,$(nvram get lan_ipaddr)"
+				CONFADDSTRING="$CONFADDSTRING||||dhcp-option=$2,42,$LAN_IPaddr"
 			fi
 
 			##----------------------------------------------##
@@ -3201,7 +3319,7 @@ DHCP_Conf()
 			DHCP_LEASE_VAL="$(eval echo '$'"$(Get_Iface_Var "$2")_DHCPLEASE")"
 			if ! Validate_DHCP_LeaseTime "$(Get_Iface_Var "$2")_DHCPLEASE" "$DHCP_LEASE_VAL"
 			then
-				DHCP_LEASE_VAL="$(nvram get dhcp_lease)"
+				DHCP_LEASE_VAL="$(_NVRAM_Get_ dhcp_lease)"
 				if ! Validate_Number "" "$DHCP_LEASE_VAL" silent ; then DHCP_LEASE_VAL=86400 ; fi
 			fi
 			if [ "$DHCP_LEASE_VAL" = "0" ] || [ "$DHCP_LEASE_VAL" = "$InfiniteLeaseTimeTag" ]
@@ -3212,7 +3330,7 @@ DHCP_Conf()
 			##----------------------------------------##
 			## Modified by Martinski W. [2022-Apr-07] ##
 			##----------------------------------------##
-			CONFSTRING="interface=$2||||dhcp-range=$2,$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(eval echo '$'"$(Get_Iface_Var "$2")_DHCPSTART"),$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(eval echo '$'"$(Get_Iface_Var "$2")_DHCPEND"),255.255.255.0,${DHCP_LEASE_VAL}||||dhcp-option=$2,3,$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(nvram get lan_ipaddr | cut -f4 -d".")||||dhcp-option=$2,6,$(eval echo '$'"$(Get_Iface_Var "$2")_DNS1"),$(eval echo '$'"$(Get_Iface_Var "$2")_DNS2")$CONFADDSTRING"
+			CONFSTRING="interface=$2||||dhcp-range=$2,$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(eval echo '$'"$(Get_Iface_Var "$2")_DHCPSTART"),$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(eval echo '$'"$(Get_Iface_Var "$2")_DHCPEND"),255.255.255.0,${DHCP_LEASE_VAL}||||dhcp-option=$2,3,$(eval echo '$'"$(Get_Iface_Var "$2")_IPADDR" | cut -f1-3 -d".").$(echo "$LAN_IPaddr" | cut -f4 -d".")||||dhcp-option=$2,6,$(eval echo '$'"$(Get_Iface_Var "$2")_DNS1"),$(eval echo '$'"$(Get_Iface_Var "$2")_DNS2")$CONFADDSTRING"
 
 			BEGIN="### Start of script-generated configuration for interface $2 ###"
 			END="### End of script-generated configuration for interface $2 ###"
@@ -3268,14 +3386,14 @@ _NVRAM_Get_WAN_IFace_()
 {
     local wanPrefix="wan0"  wanProto  WAN_IFace
 
-    wanProto="$(nvram get "${wanPrefix}_proto")"
+    wanProto="$(_NVRAM_Get_ "${wanPrefix}_proto")"
     if [ "$wanProto" = "l2tp" ] || \
        [ "$wanProto" = "pptp" ] || \
        [ "$wanProto" = "pppoe" ]
     then
-        WAN_IFace="$(nvram get "${wanPrefix}_pppoe_ifname")"
+        WAN_IFace="$(_NVRAM_Get_ "${wanPrefix}_pppoe_ifname")"
     else
-        WAN_IFace="$(nvram get "${wanPrefix}_ifname")"
+        WAN_IFace="$(_NVRAM_Get_ "${wanPrefix}_ifname")"
     fi
     echo "$WAN_IFace"
     return 0
@@ -3344,7 +3462,7 @@ Config_Networks()
 			then
 				if [ "$(eval echo '$'"$(Get_Iface_Var "$IFACE")_REDIRECTALLTOVPN")" = "true" ]
 				then
-					Print_Output true "$IFACE (SSID: $(nvram get "${IFACE}_ssid")) - VPN redirection enabled, sending all interface internet traffic over VPN Client $VPNCLIENTNO" "$PASS"
+					Print_Output true "$IFACE (SSID: $(_NVRAM_Get_ "${IFACE}_ssid")) - VPN redirection enabled, sending all interface internet traffic over VPN Client $VPNCLIENTNO" "$PASS"
 
 					if [ "$(_FWVersionStrToNum_ "$fwInstalledBranchVer")" -lt "$(_FWVersionStrToNum_ 3004.386.3)" ]
 					then
@@ -3355,7 +3473,7 @@ Config_Networks()
 
 					Firewall_NAT create "$IFACE" "$VPNCLIENTNO" 2>/dev/null
 				else
-					Print_Output true "$IFACE (SSID: $(nvram get "${IFACE}_ssid")) - sending all interface internet traffic over WAN interface" "$PASS"
+					Print_Output true "$IFACE (SSID: $(_NVRAM_Get_ "${IFACE}_ssid")) - sending all interface internet traffic over WAN interface" "$PASS"
 
 					Firewall_NAT delete "$IFACE" 2>/dev/null
 
@@ -3381,7 +3499,7 @@ Config_Networks()
 
 			if [ "$(eval echo '$'"$(Get_Iface_Var "$IFACE")_ALLOWINTERNET")" = "false" ]
 			then
-				Print_Output true "$IFACE (SSID: $(nvram get "${IFACE}_ssid")) - allow internet disabled, blocking all interface internet traffic" "$WARN"
+				Print_Output true "$IFACE (SSID: $(_NVRAM_Get_ "${IFACE}_ssid")) - allow internet disabled, blocking all interface internet traffic" "$WARN"
 				Firewall_BlockInternet create "$IFACE" 2>/dev/null
 			else
 				Firewall_BlockInternet delete "$IFACE" 2>/dev/null
@@ -3396,7 +3514,7 @@ Config_Networks()
 				GUESTLANENABLED=true
 				Firewall_Rules_ONEorTWO_WAY create "$IFACE" 2>/dev/null
 				# Disable Guest Interface ISOLATION #
-				if [ "$(nvram get "${IFACE}_ap_isolate")" != "0" ]
+				if [ "$(_NVRAM_Get_ "${IFACE}_ap_isolate")" != "0" ]
 				then
 					nvram set "$IFACE"_ap_isolate=0
 					WIRELESSRESTART="true"
@@ -3405,7 +3523,7 @@ Config_Networks()
 			then
 				GUESTLANENABLED=false
 				# Enable Guest Interface ISOLATION #
-				if [ "$(nvram get "${IFACE}_ap_isolate")" != "1" ]
+				if [ "$(_NVRAM_Get_ "${IFACE}_ap_isolate")" != "1" ]
 				then
 					nvram set "$IFACE"_ap_isolate=1
 					WIRELESSRESTART="true"
@@ -3413,7 +3531,7 @@ Config_Networks()
 			fi
 
 			#Set guest interface LAN access to allowed in f/w, prevent creating VLAN#
-			if [ "$(nvram get "${IFACE}_lanaccess")" != "on" ]
+			if [ "$(_NVRAM_Get_ "${IFACE}_lanaccess")" != "on" ]
 			then
 				nvram set "$IFACE"_lanaccess=on
 				WIRELESSRESTART="true"
@@ -3502,8 +3620,8 @@ Execute_UserScripts()
 Generate_QRCode()
 {
 	QRGUEST_WL="$1"
-	QRSSID="S:$(nvram get "$QRGUEST_WL"_ssid | sed 's/[\\":;,]/\\$&/g');"
-	QRAUTHMODE="$(nvram get "$QRGUEST_WL"_auth_mode_x)"
+	QRSSID="S:$(_NVRAM_Get_ "$QRGUEST_WL"_ssid | sed 's/[\\":;,]/\\$&/g');"
+	QRAUTHMODE="$(_NVRAM_Get_ "$QRGUEST_WL"_auth_mode_x)"
 
 	if [ "$QRAUTHMODE" = 'psk' ]  || \
 	   [ "$QRAUTHMODE" = 'psk2' ]  || \
@@ -3512,21 +3630,21 @@ Generate_QRCode()
 	   [ "$QRAUTHMODE" = 'psk2sae' ]
 	then
 		QRTYPE="T:WPA;"
-		QRPASS="P:$(nvram get "$QRGUEST_WL"_wpa_psk | sed 's/[\\":;,]/\\$&/g');"
-	elif [ "$QRAUTHMODE" = "open" ] && [ "$(nvram get "$QRGUEST_WL"_wep_x)" -eq 0 ]
+		QRPASS="P:$(_NVRAM_Get_ "$QRGUEST_WL"_wpa_psk | sed 's/[\\":;,]/\\$&/g');"
+	elif [ "$QRAUTHMODE" = "open" ] && [ "$(_NVRAM_Get_ "$QRGUEST_WL"_wep_x)" -eq 0 ]
 	then
 		QRTYPE="T:;"
 		QRPASS="P:;"
 	elif [ "$QRAUTHMODE" = "shared" ] || [ "$QRAUTHMODE" = "open" ]
 	then
 		QRTYPE="T:WEP;"
-		QRKEYINDEX=$(nvram get "$QRGUEST_WL"_key)
-		QRPASS="$(nvram get "$QRGUEST_WL"_key"$QRKEYINDEX");"
+		QRKEYINDEX=$(_NVRAM_Get_ "$QRGUEST_WL"_key)
+		QRPASS="$(_NVRAM_Get_ "$QRGUEST_WL"_key"$QRKEYINDEX");"
 	else
 		QRSSID=""  #UNSUPPORTED#
 	fi
 
-	if [ "$(nvram get "$QRGUEST_WL"_closed)" -eq 1 ]
+	if [ "$(_NVRAM_Get_ "$QRGUEST_WL"_closed)" -eq 1 ]
 	then
 		QRHIDE="H:true;"
 	fi
@@ -3547,9 +3665,11 @@ Shortcut_Script()
 {
 	case $1 in
 		create)
-			if [ -d /opt/bin ] && [ ! -f "/opt/bin/$SCRIPT_NAME" ] && [ -f "/jffs/scripts/$SCRIPT_NAME" ]
+			if [ -d /opt/bin ] && \
+			   [ -s "$SCRIPT_FPATH" ] && \
+			   [ ! -f "/opt/bin/$SCRIPT_NAME" ]
 			then
-				ln -s "/jffs/scripts/$SCRIPT_NAME" /opt/bin
+				ln -s "$SCRIPT_FPATH" /opt/bin
 				chmod 0755 "/opt/bin/$SCRIPT_NAME"
 			fi
 		;;
@@ -3562,17 +3682,14 @@ Shortcut_Script()
 	esac
 }
 
+##----------------------------------------##
+## Modified by Martinski W. [2023-Nov-20] ##
+##----------------------------------------##
 PressEnter()
 {
-	while true
-	do
-		printf "Press <Enter> key to continue..."
-		read -rs key
-		case "$key" in
-			*) break ;;
-		esac
-	done
-	return 0
+   ! "$isInteractive" && return 0
+   printf "Press <Enter> to continue..."
+   read -rs theKey ; echo
 }
 
 ##-------------------------------------##
@@ -3805,35 +3922,40 @@ MainMenu()
 }
 
 ##----------------------------------------##
-## Modified by Martinski W. [2025-Jun-18] ##
+## Modified by Martinski W. [2026-Sep-05] ##
 ##----------------------------------------##
 Check_Requirements()
 {
-	CHECKSFAILED=false
+	local CHECKSFAILED=false
 
-	if [ "$(nvram get sw_mode)" -ne 1 ]
+	if [ "$(_NVRAM_Get_ sw_mode)" -ne 1 ]
 	then
 		CHECKSFAILED=true
 		Print_Output false "Device is not running in Router Mode - non-router modes are not supported." "$ERR"
 	fi
 
-	if [ "$(nvram get jffs2_scripts)" -ne 1 ]
+	if [ "$(_NVRAM_Get_ jffs2_scripts)" -ne 1 ]
 	then
 		nvram set jffs2_scripts=1
 		nvram commit
 		Print_Output true "Custom JFFS Scripts enabled" "$WARN"
 	fi
 
-	if [ "$(nvram get wl_radio)" -eq 0 ]  && \
-	   [ "$(nvram get wl0_radio)" -eq 0 ] && \
-	   [ "$(nvram get wl1_radio)" -eq 0 ]
+	if [ "$(_NVRAM_Get_ wl_radio)" -eq 0 ]  && \
+	   [ "$(_NVRAM_Get_ wl0_radio)" -eq 0 ] && \
+	   [ "$(_NVRAM_Get_ wl1_radio)" -eq 0 ]
 	then
 		CHECKSFAILED=true
 		Print_Output false "No wireless radios are enabled!" "$ERR"
 	fi
 
 	if ! _Firmware_Support_Check_
-	then CHECKSFAILED=true ; fi
+	then CHECKSFAILED=true
+	fi
+
+	if ! _Firmware_Version_WebUI_
+	then CHECKSFAILED=true
+	fi
 
 	if [ "$CHECKSFAILED" = "false" ]
 	then return 0
@@ -3841,9 +3963,9 @@ Check_Requirements()
 	fi
 }
 
-##------------------------------------------##
-## Modified by ExtremeFiretop [2026-Jul-02] ##
-##------------------------------------------##
+##----------------------------------------##
+## Modified by Martinski W. [2026-Sep-05] ##
+##----------------------------------------##
 Menu_Install()
 {
 	ScriptHeader
@@ -3857,7 +3979,7 @@ Menu_Install()
 		Print_Output true "Requirements for $SCRIPT_NAME not met, please see above for the reason(s)" "$CRIT"
 		PressEnter ; echo
 		Clear_Lock
-		rm -f "/jffs/scripts/$SCRIPT_NAME" 2>/dev/null
+		rm -f "$SCRIPT_FPATH"
 		exit 1
 	fi
 
@@ -3869,21 +3991,16 @@ Menu_Install()
 	Create_Dirs
 	Create_Symlinks
 
-	if Firmware_Version_WebUI
-	then
-		Update_File shared-jy.tar.gz
-		Update_File YazFi_www.asp
-		Update_File YazFi_networkmap.js
-	else
-		Print_Output false "WebUI is supported only on firmware versions with add-on support" "$WARN"
-	fi
+	Update_File shared-jy.tar.gz
+	Update_File YazFi_www.asp
+	Update_File YazFi_networkmap.js
 
 	if ! Conf_Exists
 	then
 		Conf_Download "$SCRIPT_CONF"
 	else
-		Print_Output false "Existing $SCRIPT_CONF found. This will be kept by $SCRIPT_NAME" "$PASS"
-		Conf_Download "$SCRIPT_CONF.example"
+		Print_Output false "Existing $SCRIPT_CONF found. This will be kept by $SCRIPT_NAME" "$WARN"
+		Conf_Download "${SCRIPT_CONF}.example"
 	fi
 
 	Update_File README.md
@@ -3900,11 +4017,11 @@ Menu_Install()
 	Auto_OpenVPNEvent create 2>/dev/null
 	NetworkMap_Apply
 
-	Print_Output false "You can access $SCRIPT_NAME's configuration via the Guest Networks section of the WebUI" "$PASS"
-	Print_Output false "Alternatively, use $SCRIPT_NAME's menu via amtm (if installed), with /jffs/scripts/$SCRIPT_NAME or simply $SCRIPT_NAME"
+	Print_Output false "You can access ${SCRIPT_NAME}'s configuration via the Guest Networks section of the WebUI" "$BOLD"
+	Print_Output false "Alternatively, use ${SCRIPT_NAME}'s menu via AMTM, with $SCRIPT_FPATH or simply $SCRIPT_NAME" "$BOLD"
 	Clear_Lock
 	PressEnter
-	Download_File "$SCRIPT_REPO/LICENSE" "$SCRIPT_DIR/LICENSE"
+	Download_File "$SCRIPT_REPO" LICENSE "${SCRIPT_DIR}/LICENSE"
 	MainMenu
 }
 
@@ -3913,13 +4030,6 @@ Menu_Install()
 ##-------------------------------------##
 Menu_Startup()
 {
-	if ! _Firmware_Support_Check_
-	then
-		printf "${ERR}Exiting...${CLRct}\n"
-		Clear_Lock
-		exit 1
-	fi
-
 	sleep 15
 	if [ -x /opt/bin/opkg ] && [ ! -s /opt/bin/qrencode ]
 	then
@@ -4009,7 +4119,7 @@ Menu_GuestConfig()
 		if [ "$(eval echo '$'"$(Get_Iface_Var "$IFaceID")_ENABLED")" = "true" ] && \
 		   Validate_IFACE_Enabled "$IFaceID" silent
 		then
-			printf "  ${GRNct}%s${CLRct}. %s (SSID: %s)\n" "$COUNTER" "$(Menu_Get_Guest_Name "$IFaceID")" "$(nvram get "${IFaceID}_ssid")"
+			printf "  ${GRNct}%s${CLRct}. %s (SSID: %s)\n" "$COUNTER" "$(Menu_Get_Guest_Name "$IFaceID")" "$(_NVRAM_Get_ "${IFaceID}_ssid")"
 		fi
 		COUNTER="$((COUNTER + 1))"
 	done
@@ -4054,8 +4164,8 @@ Menu_GuestConfig()
 	if [ "$exitMenu" != "true" ] && "$isIFACE_VALID"
 	then
 		guestNAMEstr="$(Menu_Get_Guest_Name "$selectedIFACE")"
-		guestSSIDstr="$(nvram get "${selectedIFACE}_ssid")"
-		guestPSWDstr="$(nvram get "${selectedIFACE}_wpa_psk")"
+		guestSSIDstr="$(_NVRAM_Get_ "${selectedIFACE}_ssid")"
+		guestPSWDstr="$(_NVRAM_Get_ "${selectedIFACE}_wpa_psk")"
 
 		while true
 		do
@@ -4209,7 +4319,7 @@ Menu_QRCode()
 		   Validate_IFACE_Enabled "$IFaceID" silent
 		then
 			validOptions="${validOptions:+$validOptions }$COUNTER"
-			printf "  ${GRNct}%s${CLRct}. %s (SSID: %s)\n" "$COUNTER" "$(Menu_Get_Guest_Name "$IFaceID")" "$(nvram get "${IFaceID}_ssid")"
+			printf "  ${GRNct}%s${CLRct}. %s (SSID: %s)\n" "$COUNTER" "$(Menu_Get_Guest_Name "$IFaceID")" "$(_NVRAM_Get_ "${IFaceID}_ssid")"
 		fi
 		COUNTER="$((COUNTER + 1))"
 	done
@@ -4341,7 +4451,7 @@ _Menu_TwoWayToGuest_RoutingType_()
 			then TwoWayToGuestModeStr="NAT PostRouting"
 			else TwoWayToGuestModeStr="FILTER Forward"
 			fi
-			printf "  ${GRNct}%s${CLRct}. %s (SSID: %s)\n" "$counter" "$(Menu_Get_Guest_Name "$IFaceID")" "$(nvram get "${IFaceID}_ssid")"
+			printf "  ${GRNct}%s${CLRct}. %s (SSID: %s)\n" "$counter" "$(Menu_Get_Guest_Name "$IFaceID")" "$(_NVRAM_Get_ "${IFaceID}_ssid")"
 			printf "     [Currently: ${GRNct}%s${CLRct}]\n" "$TwoWayToGuestModeStr"
         
         fi
@@ -4455,7 +4565,7 @@ Menu_Status()
 	## Modified by Martinski W. [2023-Dec-06] ##
 	##----------------------------------------##
 	ARP_CACHE="/proc/net/arp"
-	NOT_LANIP="grep -vF \"$(nvram get lan_ipaddr | cut -d'.' -f1-3).\""
+	NOT_LANIP="grep -vF \"$(echo "$LAN_IPaddr" | cut -d'.' -f1-3).\""
 	DNSMASQ_LEASES="/var/lib/misc/dnsmasq.leases"
 
 	for IFACE in $IFACELIST
@@ -4466,7 +4576,7 @@ Menu_Status()
 			"$NoARGs" && \
 			{
 			   printf "%114s\n\n" ' ' | tr ' ' '_'
-			   printf "   ${BOLD}SSID: ${GRNct}%s${CLRct}\n" "$(nvram get "${IFACE}_ssid")"
+			   printf "   ${BOLD}SSID: ${GRNct}%s${CLRct}\n" "$(_NVRAM_Get_ "${IFACE}_ssid")"
 			   printf "   ${BOLD}NETWORK: ${GRNct}%s${CLRct}\n" "$(Menu_Get_Guest_Name "$IFACE")"
 			   printf "   ${BOLD}INTERFACE: ${GRNct}%s${CLRct}\n\n" "$IFACE"
 			}
@@ -4524,12 +4634,12 @@ Menu_Status()
 						if [ "$GUEST_HOST" = "*" ] || [ "$GUEST_HOST" = "?" ] || \
 						   [ "$(printf "%s" "$GUEST_HOST" | wc -m)" -le 1 ]
 						then
-							GUEST_HOST="$(nvram get custom_clientlist | grep -ioE "<.*>$GUEST_MACADDR" | awk -F ">" '{print $(NF-1)}' | tr -d '<')" #thanks Adamm00
+							GUEST_HOST="$(_NVRAM_Get_ custom_clientlist | grep -ioE "<.*>$GUEST_MACADDR" | awk -F ">" '{print $(NF-1)}' | tr -d '<')" #thanks Adamm00
 						fi
 
 						if [ -z "$GUEST_HOST" ] && [ -x /opt/bin/dig ]
 						then
-							GUEST_HOST="$(/opt/bin/dig +short +answer -x "$GUEST_IPADDR" '@'"$(nvram get lan_ipaddr)" | cut -f1 -d'.')"
+							GUEST_HOST="$(/opt/bin/dig +short +answer -x "$GUEST_IPADDR" '@'"$LAN_IPaddr" | cut -f1 -d'.')"
 						fi
 					elif [ -n "$FOUND_IPADDR" ]
 					then
@@ -4543,7 +4653,7 @@ Menu_Status()
 						if [ "$GUEST_HOST" = "*" ] || [ "$GUEST_HOST" = "?" ] || \
 						   [ "$(printf "%s" "$GUEST_HOST" | wc -m)" -le 1 ]
 						then
-							GUEST_HOST="$(nvram get custom_clientlist | grep -ioE "<.*>$GUEST_MACADDR" | awk -F ">" '{print $(NF-1)}' | tr -d '<')" #thanks Adamm00
+							GUEST_HOST="$(_NVRAM_Get_ custom_clientlist | grep -ioE "<.*>$GUEST_MACADDR" | awk -F ">" '{print $(NF-1)}' | tr -d '<')" #thanks Adamm00
 						fi
 					else
 						GUEST_IPADDR="Unknown"
@@ -4736,11 +4846,11 @@ Menu_Uninstall()
 
 	while true
 	do
-		printf "\n${BOLD}Do you want to delete %s configuration file(s)? (y/n)${CLEARFORMAT}  " "$SCRIPT_NAME"
+		printf "\n${BOLD}Do you want to delete %s configuration file(s)? (y/n)${CLRct}  " "$SCRIPT_NAME"
 		read -r confirm
 		case "$confirm" in
 			y|Y)
-				rm -rf "/jffs/addons/$SCRIPT_NAME.d" 2>/dev/null
+				rm -fr "$SCRIPT_DIR"
 				break
 			;;
 			*)
@@ -4748,11 +4858,12 @@ Menu_Uninstall()
 			;;
 		esac
 	done
-	SETTINGSFILE="/jffs/addons/custom_settings.txt"
+
+	SETTINGSFILE="${JFFS_ADDONS}/custom_settings.txt"
 	sed -i '/yazfi_version_local/d' "$SETTINGSFILE"
 	sed -i '/yazfi_version_server/d' "$SETTINGSFILE"
 	Shortcut_Script delete
-	rm -f "/jffs/scripts/$SCRIPT_NAME" 2>/dev/null
+	rm -f "$SCRIPT_FPATH"
 	Clear_Lock
 	Print_Output true "Restarting firewall to complete uninstall" "$PASS"
 	service restart_dnsmasq >/dev/null 2>&1
@@ -4823,17 +4934,18 @@ then SCRIPT_VERS_INFO=""
 else SCRIPT_VERS_INFO="[$versionDev_TAG]"
 fi
 
-##------------------------------------------##
-## Modified by ExtremeFiretop [2026-Aug-23] ##
-##------------------------------------------##
+##----------------------------------------##
+## Modified by Martinski W. [2026-Sep-05] ##
+##----------------------------------------##
 if [ $# -eq 0 ] || [ -z "$1" ]
 then
-	if ! _Firmware_Support_Check_
+	if ! _Firmware_Support_Check_ || \
+	   ! _Firmware_Version_WebUI_
 	then
 		if [ -d "$SCRIPT_DIR" ]
 		then
 		    printf "${SETTING}To uninstall use this command:  ${CLRct}"
-		    printf "${MGNTct}/jffs/scripts/$SCRIPT_NAME uninstall${CLRct}\n\n"
+		    printf "${MGNTct}$SCRIPT_FPATH uninstall${CLRct}\n\n"
 		fi
 		PressEnter
 		printf "\n${ERR}Exiting...${CLRct}\n\n"
@@ -4854,19 +4966,25 @@ then
 	Set_Version_Custom_Settings local "$SCRIPT_VERSION"
 	Shortcut_Script create
 	_CheckFor_WebGUI_Page_
-	if Firmware_Version_WebUI && [ ! -s "$NETWORKMAP_SOURCE_JS" ]
-	then
-	    Print_Output true "Network Map JS source missing - attempting repair" "$WARN"
- 	   Update_File YazFi_networkmap.js
-	fi
+	_CheckFor_NetworkMap_SourceJS_
 	NetworkMap_Apply
 	MainMenu
 	exit 0
 fi
 
 ##----------------------------------------##
-## Modified by Martinski W. [2026-Feb-18] ##
+## Modified by Martinski W. [2026-Sep-05] ##
 ##----------------------------------------##
+if [ "$1" != "install" ]   && \
+   [ "$1" != "uninstall" ] && \
+   { ! _Firmware_Support_Check_ || \
+     ! _Firmware_Version_WebUI_
+   }
+then
+	printf "${ERR}Exiting...${CLRct}\n"
+	exit 1
+fi
+
 case "$1" in
 	install)
 		Menu_Install
@@ -4874,6 +4992,10 @@ case "$1" in
 	;;
 	startup)
 		Menu_Startup
+		exit 0
+	;;
+	uninstall)
+		Menu_Uninstall
 		exit 0
 	;;
 	runnow)
@@ -4924,7 +5046,7 @@ case "$1" in
 			if [ "$(eval echo '$'"$(Get_Iface_Var "$IFACE")_ENABLED")" = "true" ] && \
 			   Validate_IFACE_Enabled "$IFACE" silent
 			then
-				if [ "$(nvram get "${IFACE}_lanaccess")" != "on" ]
+				if [ "$(_NVRAM_Get_ "${IFACE}_lanaccess")" != "on" ]
 				then
 					nvram set "$IFACE"_lanaccess=on
 					WIRELESSRESTART="true"
@@ -4936,7 +5058,7 @@ case "$1" in
 				if [ "$(eval echo '$'"$(Get_Iface_Var "$IFACE")_ONEWAYTOGUEST")" = "true" ] || \
 				   [ "$(eval echo '$'"$(Get_Iface_Var "$IFACE")_TWOWAYTOGUEST")" = "true" ]
 				then  # Disable ISOLATION #
-					if [ "$(nvram get "${IFACE}_ap_isolate")" != "0" ]
+					if [ "$(_NVRAM_Get_ "${IFACE}_ap_isolate")" != "0" ]
 					then
 						nvram set "$IFACE"_ap_isolate=0
 						WIRELESSRESTART="true"
@@ -5097,10 +5219,6 @@ case "$1" in
 		Shortcut_Script create
 		Update_File YazFi_networkmap.js
 		NetworkMap_Apply
-		exit 0
-	;;
-	uninstall)
-		Menu_Uninstall
 		exit 0
 	;;
 	develop)
